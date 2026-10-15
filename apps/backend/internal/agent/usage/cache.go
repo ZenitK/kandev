@@ -104,7 +104,9 @@ func (c *UsageCache) GetOrFetchWithin(
 			c.storeFailure(key, err)
 			// A bounded stale reading beats no reading: serve the preserved
 			// success instead of reporting a provider the caller cannot act on.
-			if stale, ok, _ := c.lookup(key, maxAge); ok {
+			// Only a real preserved success counts; a lookup that reports the
+			// cached error must keep surfacing that error, not a nil reading.
+			if stale, ok, lerr := c.lookup(key, maxAge); ok && stale != nil && lerr == nil {
 				return stale, nil
 			}
 		}
@@ -141,7 +143,9 @@ func (c *UsageCache) lookup(key string, maxAge time.Duration) (*ProviderUsage, b
 		return e.usage, true, nil
 	}
 	if now.Before(e.backoffUntil) {
-		if !e.successAt.IsZero() && now.Sub(e.successAt) < maxStaleUsageAge {
+		// A negative-cache success stores a nil usage, so only clone a real
+		// reading; otherwise fall through to the cached error.
+		if e.usage != nil && !e.successAt.IsZero() && now.Sub(e.successAt) < maxStaleUsageAge {
 			stale := *e.usage
 			stale.Stale = true
 			return &stale, true, nil
