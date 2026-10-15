@@ -75,7 +75,7 @@ func parseRetryAfter(value string, now time.Time) time.Duration {
 		if seconds <= 0 {
 			return 0
 		}
-		delay = time.Duration(seconds) * time.Second
+		delay = time.Duration(min(seconds, int64(maxRetryAfter/time.Second))) * time.Second
 	} else if parsed, parseErr := http.ParseTime(trimmed); parseErr == nil {
 		if !parsed.After(now) {
 			return 0

@@ -101,3 +101,10 @@ the existing package tests pass. A temporary in-package probe confirmed the four
 contract cases (first failure returns the error, a valid success followed by a
 429 is served `Stale`, a 31-minute-old success reports the error, and an expired
 nil success no longer panics) and was removed after the run.
+
+Pre-publication inspection also found that very large integer `Retry-After`
+values could overflow before the duration cap. Positive seconds are now compared
+with the existing cap before conversion. A temporary standalone probe of the
+exact modified parser passed 16 boundary cases, including overflowing seconds,
+MaxInt64, cap boundaries, invalid input, and HTTP dates. The existing usage
+package tests passed with `-trimpath`; no standing test file was added.
