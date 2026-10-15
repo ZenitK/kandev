@@ -108,3 +108,20 @@ with the existing cap before conversion. A temporary standalone probe of the
 exact modified parser passed 16 boundary cases, including overflowing seconds,
 MaxInt64, cap boundaries, invalid input, and HTTP dates. The existing usage
 package tests passed with `-trimpath`; no standing test file was added.
+
+The public review identified two further boundary failures on `f258b428`.
+Positive decimal seconds above the integer parser's range now use the same
+15-minute cap, while malformed and negative headers retain the prior behavior.
+Active failure backoff is checked before the caller's ordinary freshness bound,
+so a long `maxAge` cannot hide a provider error or omit the `Stale` marker.
+Disposable exact-source checks reproduced both defects before the change (two
+parser failures and four cache-policy failures), then all 22 boundaries passed
+under race (1.270s), including the exact 30-minute boundary, nil success, invalid
+overflow suffixes, HTTP dates, and ordinary freshness without a failure. The
+existing usage package passed with `-trimpath` (0.074s). The first temporary
+fixture run failed to locate its source copies; correcting only those paths
+produced the recorded RED run. No permanent test file was added.
+The normal hook rejected the initial extra parser branch at nestif complexity 5.
+Moving range recognition to a flat early guard preserved all 22 race checks
+(1.380s); the existing usage package passed again (0.200s), with no lint guard
+or threshold change.

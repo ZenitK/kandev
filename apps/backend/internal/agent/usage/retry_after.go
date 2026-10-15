@@ -70,8 +70,12 @@ func parseRetryAfter(value string, now time.Time) time.Duration {
 	if trimmed == "" {
 		return 0
 	}
+	seconds, err := strconv.ParseInt(trimmed, 10, 64)
+	if errors.Is(err, strconv.ErrRange) && strings.Trim(trimmed, "0123456789") == "" {
+		return maxRetryAfter
+	}
 	var delay time.Duration
-	if seconds, err := strconv.ParseInt(trimmed, 10, 64); err == nil {
+	if err == nil {
 		if seconds <= 0 {
 			return 0
 		}

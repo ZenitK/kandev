@@ -41,13 +41,16 @@ Adjacent contracts this design uses but does not own:
 - A provider status failure exposes `StatusCode()` and `RetryAfter()`, so the
   cache follows the provider's own pacing without parsing message strings.
 - A `Retry-After` hint is accepted as delta-seconds or an HTTP-date and clamped
-  to 15 minutes.
+  to 15 minutes. Positive decimal seconds above the integer parser's range also
+  reach this cap; malformed and negative values remain unreadable hints.
 - A nil reading from a fetch function is stored as a negative-cache entry and
   reused while it is within the caller's age bound, but it is never cloned as a
   stale success.
 - While a key is in backoff, a real (non-nil) preserved success younger than 30
   minutes is served as `Stale` even beyond the caller's age bound; otherwise
   `GetOrFetchWithin` serves a cached value only within the caller's age bound.
+  The backoff failure policy is checked before ordinary freshness, so a longer
+  caller age bound cannot bypass the stale limit or hide a cached failure.
 
 ## Control flow
 

@@ -139,9 +139,6 @@ func (c *UsageCache) lookup(key string, maxAge time.Duration) (*ProviderUsage, b
 		return nil, false, nil
 	}
 	now := time.Now()
-	if !e.successAt.IsZero() && now.Sub(e.successAt) < maxAge {
-		return e.usage, true, nil
-	}
 	if now.Before(e.backoffUntil) {
 		// A negative-cache success stores a nil usage, so only clone a real
 		// reading; otherwise fall through to the cached error.
@@ -153,6 +150,9 @@ func (c *UsageCache) lookup(key string, maxAge time.Duration) (*ProviderUsage, b
 		if e.err != nil {
 			return nil, true, e.err
 		}
+	}
+	if !e.successAt.IsZero() && now.Sub(e.successAt) < maxAge {
+		return e.usage, true, nil
 	}
 	return nil, false, nil
 }
