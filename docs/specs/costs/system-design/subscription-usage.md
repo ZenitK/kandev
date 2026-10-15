@@ -38,13 +38,16 @@ Adjacent contracts this design uses but does not own:
 
 - `ProviderUsage.Stale` marks a preserved success served while a provider
   refuses a refresh; `FetchedAt` still records when the reading was taken.
-- A provider status failure exposes `StatusCode()` and `Retry-After()`, so the
+- A provider status failure exposes `StatusCode()` and `RetryAfter()`, so the
   cache follows the provider's own pacing without parsing message strings.
 - A `Retry-After` hint is accepted as delta-seconds or an HTTP-date and clamped
   to 15 minutes.
-- A nil reading from a fetch function is a negative-cache entry, not a success;
-  the cache never serves it as a fresh or stale success.
-- `GetOrFetchWithin` serves a cached success only within the caller's age bound.
+- A nil reading from a fetch function is stored as a negative-cache entry and
+  reused while it is within the caller's age bound, but it is never cloned as a
+  stale success.
+- While a key is in backoff, a real (non-nil) preserved success younger than 30
+  minutes is served as `Stale` even beyond the caller's age bound; otherwise
+  `GetOrFetchWithin` serves a cached value only within the caller's age bound.
 
 ## Control flow
 
@@ -60,10 +63,12 @@ Adjacent contracts this design uses but does not own:
 
 - A preserved success younger than 30 minutes is served as `Stale`, so a caller
   keeps a real reading instead of an unactionable error.
-- A preserved success older than 30 minutes, or no preserved success, reports
-  the provider error.
-- A failed refresh returns the provider error and never a nil success, including
-  when the expired entry held only a nil negative-cache success.
+- A preserved success at least 30 minutes old, or no usable (non-nil) preserved
+  success, reports the provider error.
+- A failed refresh returns the provider error and never a nil success, except
+  when a real preserved success younger than 30 minutes is available: then that
+  reading is served as `Stale`, including when the entry's only other success was
+  an expired nil negative-cache entry.
 - A caller cancellation does not poison the cache; that failure is not recorded.
 
 ## Persistence
