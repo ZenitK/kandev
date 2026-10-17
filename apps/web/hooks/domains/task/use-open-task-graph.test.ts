@@ -6,27 +6,52 @@ vi.mock("@/lib/routing/client-router", () => ({
   useRouter: () => router,
   useSearchParams: () => new URLSearchParams(router.search),
 }));
+const breakpoint = vi.hoisted(() => ({ isMobile: false }));
+vi.mock("@/hooks/use-responsive-breakpoint", () => ({ useResponsiveBreakpoint: () => breakpoint }));
 vi.mock("@/components/state-provider", () => ({
-  useAppStore: (sel: (s: { tasks: { activeTaskId: string } }) => unknown) =>
-    sel({ tasks: { activeTaskId: "current" } }),
+  useAppStore: (sel: (s: unknown) => unknown) =>
+    sel({ tasks: { activeTaskId: "current" }, workspaces: { activeId: "ws" } }),
+}));
+const storedView = vi.hoisted(() => ({ value: "" }));
+vi.mock("@/lib/task-listing/view-preference", () => ({
+  setStoredTaskListingView: (view: string) => {
+    storedView.value = view;
+  },
 }));
 
 import { useOpenTaskGraph } from "./use-open-task-graph";
 
 beforeEach(() => {
+  breakpoint.isMobile = false;
+  storedView.value = "";
   router.push.mockReset();
   router.replace.mockReset();
 });
 
 describe("useOpenTaskGraph", () => {
   it("navigates to another task with the graph requested", () => {
-    renderHook(() => useOpenTaskGraph()).result.current("other");
+    renderHook(() => useOpenTaskGraph()).result.current.openTab("other");
     expect(router.push).toHaveBeenCalledWith("/t/other?panel=task-graph");
   });
 
   it("requests the graph on the current task without losing its query", () => {
-    renderHook(() => useOpenTaskGraph()).result.current("current");
+    renderHook(() => useOpenTaskGraph()).result.current.openTab("current");
     expect(router.replace).toHaveBeenCalledWith("/t/current?sessionId=s1&panel=task-graph");
     expect(router.push).not.toHaveBeenCalled();
+  });
+
+  it("shows a task in the board Graph view on desktop", () => {
+    renderHook(() => useOpenTaskGraph()).result.current.showInGraph("t9", "wf1");
+    expect(storedView.value).toBe("graph");
+    expect(router.push).toHaveBeenCalledWith(
+      "/?home=overview&workspaceId=ws&workflowId=wf1&graphFocus=t9",
+    );
+  });
+
+  it("falls back to the task sheet on phones", () => {
+    breakpoint.isMobile = true;
+    renderHook(() => useOpenTaskGraph()).result.current.showInGraph("other");
+    expect(storedView.value).toBe("");
+    expect(router.push).toHaveBeenCalledWith("/t/other?panel=task-graph");
   });
 });

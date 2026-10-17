@@ -2807,5 +2807,8 @@
   "taskGraphFitView": "Ƒĩţ ţō vĩēŵ",
   "taskGraphCanvas": "Ţàśķ ĝŕàƥĥ ćàńvàś",
   "panelTaskGraph": "Ţàśķ ĝŕàƥĥ",
-  "taskGraphShowInGraph": "Śĥōŵ ĩń ĝŕàƥĥ"
+  "taskGraphShowInGraph": "Śĥōŵ ĩń ĝŕàƥĥ",
+  "taskGraphOpenTask": "Ōƥēń ţàśķ",
+  "taskGraphPreviewTask": "Ƥŕēvĩēŵ",
+  "taskGraphSelectHint": "Śēĺēćţ à ţàśķ ţō ōƥēń ĩţ, ōŕ ďōũƀĺē-ćĺĩćķ ĩţ."
 }

@@ -7,7 +7,7 @@ vi.mock("@/hooks/domains/task/use-task-graph-available", () => ({
   useTaskGraphAvailable: () => available.value,
 }));
 vi.mock("@/hooks/domains/task/use-open-task-graph", () => ({
-  useOpenTaskGraph: () => openTaskGraph,
+  useOpenTaskGraph: () => ({ openTab: openTaskGraph, showInGraph: vi.fn() }),
 }));
 
 import { TaskGraphButton } from "./task-graph-button";

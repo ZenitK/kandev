@@ -64,11 +64,13 @@ export function TaskGraphNodeCard({
       data-focused={node.focused}
       data-dimmed={state.dimmed}
       data-emphasized={state.emphasized}
+      data-selected={state.selected}
       className={cn(
         "flex h-full w-full flex-col gap-1 overflow-hidden rounded-md border bg-card p-2 text-left text-xs text-card-foreground shadow-sm transition-opacity",
         node.role === "external" && "border-dashed bg-muted/40",
         node.archived && "opacity-60",
         node.focused && "ring-2 ring-primary",
+        state.selected && "ring-2 ring-primary ring-offset-2 ring-offset-background",
         state.dimmed && "opacity-30",
       )}
     >

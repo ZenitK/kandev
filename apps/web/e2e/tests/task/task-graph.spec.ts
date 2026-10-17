@@ -120,7 +120,7 @@ test.describe("Task graph", () => {
     await expect(testPage.getByTestId("task-graph-panel")).toBeVisible();
   });
 
-  test("Show in graph from the sidebar and a Kanban card focuses that task", async ({
+  test("Show in graph opens the board Graph view focused on that task", async ({
     testPage,
     apiClient,
     seedData,
@@ -136,10 +136,11 @@ test.describe("Task graph", () => {
       .filter({ hasText: g.c.title });
     await row.click({ button: "right" });
     await testPage.getByTestId("task-context-show-in-graph").click();
-    await expect(testPage).toHaveURL(new RegExp(`/t/${g.c.id}$`));
-    const panel = testPage.getByTestId("task-graph-panel");
-    await expect(panel).toBeVisible();
-    await expect(panel.locator(".react-flow.dark")).toHaveCount(1);
+    await expect(testPage).toHaveURL(new RegExp(`graphFocus=${g.c.id}`));
+    const board = testPage.getByTestId("board-graph");
+    await expect(board).toBeVisible();
+    await expect(board.locator(".react-flow.dark")).toHaveCount(1);
+    await expect(testPage.getByTestId("view-toggle-graph")).toHaveAttribute("data-state", "on");
     await expect(node(testPage, g.c.id).getByTestId("task-graph-node-card")).toHaveAttribute(
       "data-focused",
       "true",
@@ -147,14 +148,44 @@ test.describe("Task graph", () => {
 
     const kanban = new KanbanPage(testPage);
     await kanban.goto(seedData.workflowId);
+    await testPage.getByTestId("view-toggle-kanban").click();
     await kanban.taskCard(g.d.id).click({ button: "right" });
     await testPage.getByTestId("task-context-show-in-graph").click();
-    await expect(testPage).toHaveURL(new RegExp(`/t/${g.d.id}$`));
-    await expect(testPage.getByTestId("task-graph-panel")).toBeVisible();
+    await expect(testPage).toHaveURL(new RegExp(`graphFocus=${g.d.id}`));
     await expect(node(testPage, g.d.id).getByTestId("task-graph-node-card")).toHaveAttribute(
       "data-focused",
       "true",
     );
+  });
+
+  test("the board Graph view frames subtasks by parent", async ({
+    testPage,
+    apiClient,
+    seedData,
+  }) => {
+    const g = await seedGraph(apiClient, seedData);
+    const kanban = new KanbanPage(testPage);
+    await kanban.goto(seedData.workflowId);
+    await testPage.getByTestId("view-toggle-graph").click();
+    const board = testPage.getByTestId("board-graph");
+    await expect(board).toBeVisible();
+    await expect(
+      board.getByTestId("task-graph-frame").filter({ hasText: g.parent.title }),
+    ).toHaveCount(1);
+    await expect(node(testPage, g.a.id)).toBeVisible();
+    await expect(node(testPage, g.outside.id)).toBeVisible();
+
+    // A click selects; Open goes into the selected task.
+    await node(testPage, g.b.id).click();
+    await expect(board.getByTestId("board-graph-selection")).toContainText(g.b.title);
+    await expect(testPage).not.toHaveURL(new RegExp(`/t/${g.b.id}`));
+    await board.getByTestId("board-graph-open").click();
+    await expect(testPage).toHaveURL(new RegExp(`/t/${g.b.id}`));
+
+    // Double-clicking a node opens it directly.
+    await kanban.goto(seedData.workflowId);
+    await node(testPage, g.a.id).dblclick();
+    await expect(testPage).toHaveURL(new RegExp(`/t/${g.a.id}`));
   });
 
   test("the dependency chip opens the graph tab", async ({ testPage, apiClient, seedData }) => {

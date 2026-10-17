@@ -7,7 +7,7 @@ const touch = vi.hoisted(() => ({ value: false }));
 const openTaskGraph = vi.hoisted(() => vi.fn());
 vi.mock("@/hooks/use-compact-task-chrome", () => ({ useTouchDrawer: () => touch.value }));
 vi.mock("@/hooks/domains/task/use-open-task-graph", () => ({
-  useOpenTaskGraph: () => openTaskGraph,
+  useOpenTaskGraph: () => ({ openTab: openTaskGraph, showInGraph: vi.fn() }),
 }));
 
 import { TaskDependencyChip } from "./task-dependency-chip";

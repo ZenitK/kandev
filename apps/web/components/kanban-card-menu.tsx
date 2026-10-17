@@ -199,12 +199,14 @@ function useTaskMenuConfirmations(
 }
 
 /** Show in graph applies to one card, not a multi-selection. */
-function showGraphHandler(
-  open: (taskId: string) => void,
+function useShowGraphHandler(
   taskId: string,
+  moveMenu: { moveTargets: { currentWorkflowId?: string | null } },
   multiSelection: boolean,
 ): (() => void) | undefined {
-  return multiSelection ? undefined : () => open(taskId);
+  const { showInGraph } = useOpenTaskGraph();
+  const workflowId = moveMenu.moveTargets.currentWorkflowId ?? undefined;
+  return multiSelection ? undefined : () => showInGraph(taskId, workflowId);
 }
 
 export function useKanbanCardMenus({
@@ -233,7 +235,6 @@ export function useKanbanCardMenus({
   const dialogs = useTaskMenuDialogState();
   const { detachTask, detachingTaskId } = useDetachTask();
   const updateTaskPriority = useUpdateTaskPriority();
-  const openTaskGraph = useOpenTaskGraph();
   const prUnlinkMenu = useCardPRUnlinkEntries(task);
   const { handleDetachConfirm, requestDetachConfirmation, requestArchiveConfirmation } =
     useTaskMenuConfirmations(task.id, detachTask, dialogs);
@@ -243,6 +244,7 @@ export function useKanbanCardMenus({
   const disabled = Boolean(isDeleting || isArchiving || isDetaching);
   const moveDisabled = Boolean(disabled || isMoving);
   const actingOnMultiSelection = Boolean(isSelected && selectedIds && selectedIds.size > 1);
+  const onShowGraph = useShowGraphHandler(task.id, moveMenu, actingOnMultiSelection);
 
   const menuBase = {
     currentWorkflowId: moveMenu.moveTargets.currentWorkflowId,
@@ -261,7 +263,7 @@ export function useKanbanCardMenus({
     onArchive: onArchive ? requestArchiveConfirmation : undefined,
     onDelete: onDelete ? () => dialogs.setShowDeleteConfirm(true) : undefined,
     onDetach: task.parentTaskId && !actingOnMultiSelection ? requestDetachConfirmation : undefined,
-    onShowGraph: showGraphHandler(openTaskGraph, task.id, actingOnMultiSelection),
+    onShowGraph,
     ...buildLinkDialogHandlers(externalLinkAvailability, dialogs),
     onChangeWorkflow: () => {
       window.setTimeout(() => dialogs.setShowChangeWorkflow(true), 300);

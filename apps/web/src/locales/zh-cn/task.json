@@ -2807,5 +2807,8 @@
   "taskGraphFitView": "适应视图",
   "taskGraphCanvas": "任务关系图画布",
   "panelTaskGraph": "任务关系图",
-  "taskGraphShowInGraph": "在关系图中显示"
+  "taskGraphShowInGraph": "在关系图中显示",
+  "taskGraphOpenTask": "打开任务",
+  "taskGraphPreviewTask": "预览",
+  "taskGraphSelectHint": "选择一个任务以打开，或双击它。"
 }

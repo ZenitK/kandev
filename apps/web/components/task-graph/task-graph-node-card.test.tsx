@@ -23,7 +23,12 @@ function node(overrides: Partial<TaskGraphNode> = {}): TaskGraphNode {
 
 describe("TaskGraphNodeCard", () => {
   it("shows step, title and state", () => {
-    render(<TaskGraphNodeCard node={node()} state={{ dimmed: false, emphasized: false }} />);
+    render(
+      <TaskGraphNodeCard
+        node={node()}
+        state={{ dimmed: false, emphasized: false, selected: false }}
+      />,
+    );
     expect(screen.getByText("2")).toBeTruthy();
     expect(screen.getByText("Write API")).toBeTruthy();
     expect(screen.getByText("In progress")).toBeTruthy();
@@ -39,7 +44,7 @@ describe("TaskGraphNodeCard", () => {
           depth: 2,
           parent_title: "Backend",
         })}
-        state={{ dimmed: false, emphasized: false }}
+        state={{ dimmed: false, emphasized: false, selected: false }}
       />,
     );
     expect(screen.getByText("Blocked")).toBeTruthy();
@@ -50,7 +55,7 @@ describe("TaskGraphNodeCard", () => {
     rerender(
       <TaskGraphNodeCard
         node={node({ blocked: true, blocked_reason: "failed", role: "external", archived: true })}
-        state={{ dimmed: true, emphasized: false }}
+        state={{ dimmed: true, emphasized: false, selected: false }}
       />,
     );
     expect(screen.getByText("Predecessor failed")).toBeTruthy();
@@ -59,11 +64,21 @@ describe("TaskGraphNodeCard", () => {
     expect(screen.getByTestId("task-graph-node-card").dataset.dimmed).toBe("true");
   });
 
+  it("marks the selected node", () => {
+    render(
+      <TaskGraphNodeCard
+        node={node()}
+        state={{ dimmed: false, emphasized: false, selected: true }}
+      />,
+    );
+    expect(screen.getByTestId("task-graph-node-card").dataset.selected).toBe("true");
+  });
+
   it("does not name the parent of a direct child", () => {
     render(
       <TaskGraphNodeCard
         node={node({ parent_title: "Root" })}
-        state={{ dimmed: false, emphasized: false }}
+        state={{ dimmed: false, emphasized: false, selected: false }}
       />,
     );
     expect(screen.queryByText("in Root")).toBeNull();

@@ -47,3 +47,53 @@ export function layoutTaskGraph(model: TaskGraphModel): TaskGraphLayout {
   }
   return layout;
 }
+
+const FRAME_PADDING = 16;
+const FRAME_LABEL_SPACE = 24;
+
+export type TaskGraphLayoutGroup = { id: string; memberIds: string[] };
+
+/**
+ * Board layout with parent frames. dagre's compound graph keeps each group's
+ * members contiguous; frames are the members' bounding box plus label space.
+ */
+export function layoutGroupedTaskGraph(
+  model: TaskGraphModel,
+  groups: TaskGraphLayoutGroup[],
+): { nodes: TaskGraphLayout; groups: Map<string, TaskGraphNodeBox> } {
+  const g = new dagre.graphlib.Graph({ compound: true });
+  g.setGraph({ rankdir: "LR", nodesep: ROW_GAP + FRAME_PADDING, ranksep: COLUMN_GAP });
+  g.setDefaultEdgeLabel(() => ({}));
+  for (const n of model.nodes) {
+    g.setNode(n.id, { width: TASK_GRAPH_NODE_WIDTH, height: TASK_GRAPH_NODE_HEIGHT });
+  }
+  const displayed = new Set(model.nodes.map((n) => n.id));
+  for (const group of groups) {
+    g.setNode(group.id, {});
+    for (const id of group.memberIds) if (displayed.has(id)) g.setParent(id, group.id);
+  }
+  for (const e of model.edges) g.setEdge(e.from, e.to);
+  dagre.layout(g);
+
+  const nodes: TaskGraphLayout = new Map();
+  for (const n of model.nodes) {
+    const p = g.node(n.id);
+    nodes.set(n.id, {
+      x: (p?.x ?? 0) - TASK_GRAPH_NODE_WIDTH / 2,
+      y: (p?.y ?? 0) - TASK_GRAPH_NODE_HEIGHT / 2,
+      width: TASK_GRAPH_NODE_WIDTH,
+      height: TASK_GRAPH_NODE_HEIGHT,
+    });
+  }
+  const frames = new Map<string, TaskGraphNodeBox>();
+  for (const group of groups) {
+    const boxes = group.memberIds.flatMap((id) => nodes.get(id) ?? []);
+    if (boxes.length === 0) continue;
+    const left = Math.min(...boxes.map((b) => b.x)) - FRAME_PADDING;
+    const top = Math.min(...boxes.map((b) => b.y)) - FRAME_PADDING - FRAME_LABEL_SPACE;
+    const right = Math.max(...boxes.map((b) => b.x + b.width)) + FRAME_PADDING;
+    const bottom = Math.max(...boxes.map((b) => b.y + b.height)) + FRAME_PADDING;
+    frames.set(group.id, { x: left, y: top, width: right - left, height: bottom - top });
+  }
+  return { nodes, groups: frames };
+}

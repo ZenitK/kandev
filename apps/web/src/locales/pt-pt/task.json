@@ -2807,5 +2807,8 @@
   "taskGraphFitView": "Ajustar à vista",
   "taskGraphCanvas": "Área do grafo de tarefas",
   "panelTaskGraph": "Grafo de tarefas",
-  "taskGraphShowInGraph": "Mostrar no grafo"
+  "taskGraphShowInGraph": "Mostrar no grafo",
+  "taskGraphOpenTask": "Abrir tarefa",
+  "taskGraphPreviewTask": "Pré-visualizar",
+  "taskGraphSelectHint": "Selecione uma tarefa para a abrir, ou faça duplo clique."
 }

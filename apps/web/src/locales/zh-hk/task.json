@@ -2807,5 +2807,8 @@
   "taskGraphFitView": "適應視圖",
   "taskGraphCanvas": "任務關係圖畫布",
   "panelTaskGraph": "任務關係圖",
-  "taskGraphShowInGraph": "在關係圖中顯示"
+  "taskGraphShowInGraph": "在關係圖中顯示",
+  "taskGraphOpenTask": "開啟任務",
+  "taskGraphPreviewTask": "預覽",
+  "taskGraphSelectHint": "選擇一個任務以開啟，或雙擊它。"
 }

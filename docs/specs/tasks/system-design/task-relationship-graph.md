@@ -11,6 +11,7 @@ requirements:
   - REQ-TASKS-TASK-RELATIONSHIP-GRAPH-007
   - REQ-TASKS-TASK-RELATIONSHIP-GRAPH-008
   - REQ-TASKS-TASK-RELATIONSHIP-GRAPH-009
+  - REQ-TASKS-TASK-RELATIONSHIP-GRAPH-010
 created: 2026-10-17
 owners:
   - kandev
@@ -47,6 +48,7 @@ Renderer isolation follows
 | `REQ-TASKS-TASK-RELATIONSHIP-GRAPH-007` | [Bounds and failure](#bounds-and-failure) |
 | `REQ-TASKS-TASK-RELATIONSHIP-GRAPH-008` | [Responsive behavior](#responsive-behavior) |
 | `REQ-TASKS-TASK-RELATIONSHIP-GRAPH-009` | [Workbench tab](#workbench-tab), [Show in graph](#show-in-graph) |
+| `REQ-TASKS-TASK-RELATIONSHIP-GRAPH-010` | [Board Graph view](#board-graph-view) |
 
 ## Graph read contract
 
@@ -348,6 +350,30 @@ without the param so reloads and back navigation do not reopen it. The sidebar
 context menu (`TaskShowInGraphItem` in the relationships group) and the Kanban
 card menu (`buildShowGraphEntry`) push that link. The status-row button and
 the chip action call the same open path for the current task.
+
+## Board Graph view
+
+`TaskListingView` gains `"graph"`; `useTaskListingView` maps it to
+`userSettings.kanbanViewMode = "graph"`, and `VIEW_REGISTRY` resolves that to
+`SwimlaneTaskGraphContent`, which renders once per workflow lane with the lane's
+already-filtered `tasks` (`ViewContentProps`). Phones fall back to Kanban in both
+`getEffectiveTaskListingView` and `getEffectiveView`, matching Pipeline. No
+backend change is needed: `kanbanViewMode` is an opaque string.
+
+The lane lazy-loads `BoardGraph`, which builds the graph client-side with
+`buildBoardGraph` (`lib/task-graph/board.ts`): nodes are the lane's tasks, edges
+are `dependsOn` refs whose predecessor is also on the lane, and each parent
+becomes a frame. `layoutGroupedTaskGraph` uses dagre's compound mode to keep a
+parent's subtasks contiguous and sizes each frame from its members. Frames are
+non-interactive xyflow background nodes (`TaskGraphRendererProps.frames`).
+Node activation calls the board's `onPreviewTask`. The shared `TaskGraphCanvas`
+supplies theme, touch, emphasis and accessible names to both this view and the
+task graph.
+
+`linkToTaskOverview({ graphFocusTaskId })` adds `?graphFocus=`; the lane that
+contains the task marks it focused, centres it, and scrolls into view.
+`useOpenTaskGraph().showInGraph` stores the Graph view and navigates there; the
+status-row button and chip keep `openTab`, which opens the workbench tab.
 
 ## Localization
 

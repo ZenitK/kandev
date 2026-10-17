@@ -280,7 +280,7 @@ function ChipPopover({ data, open, setOpen, triggerRef, onViewGraph }: ChipSurfa
 export function TaskDependencyChip({ taskId }: { taskId: string | null }) {
   const data = useTaskDependencies(taskId);
   const usesMobileDrawer = useTouchDrawer();
-  const openTaskGraph = useOpenTaskGraph();
+  const { openTab } = useOpenTaskGraph();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   // No edges in either direction: nothing to say. Same null-when-not-applicable
@@ -294,7 +294,7 @@ export function TaskDependencyChip({ taskId }: { taskId: string | null }) {
     triggerRef,
     onViewGraph: () => {
       setOpen(false);
-      openTaskGraph(taskId);
+      openTab(taskId);
     },
   };
   return usesMobileDrawer ? <ChipDrawer {...surface} /> : <ChipPopover {...surface} />;

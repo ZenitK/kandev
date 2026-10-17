@@ -2807,5 +2807,8 @@
   "taskGraphFitView": "Fit to view",
   "taskGraphCanvas": "Task graph canvas",
   "panelTaskGraph": "Task graph",
-  "taskGraphShowInGraph": "Show in graph"
+  "taskGraphShowInGraph": "Show in graph",
+  "taskGraphOpenTask": "Open task",
+  "taskGraphPreviewTask": "Preview",
+  "taskGraphSelectHint": "Select a task to open it, or double-click it."
 }

@@ -50,17 +50,17 @@ export function TaskShowInGraphItem({
   task,
   disabled,
 }: {
-  task: { id: string; isArchived?: boolean };
+  task: { id: string; isArchived?: boolean; workflowId?: string };
   disabled?: boolean;
 }) {
   const { t } = useTranslation();
-  const openTaskGraph = useOpenTaskGraph();
+  const { showInGraph } = useOpenTaskGraph();
   if (task.isArchived) return null;
   return (
     <ContextMenuItem
       data-testid="task-context-show-in-graph"
       disabled={disabled}
-      onSelect={() => openTaskGraph(task.id)}
+      onSelect={() => showInGraph(task.id, task.workflowId)}
     >
       <IconHierarchy3 className="mr-2 h-4 w-4" />
       {t("task:taskGraphShowInGraph")}

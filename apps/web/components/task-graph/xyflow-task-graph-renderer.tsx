@@ -28,6 +28,7 @@ type TaskNodeData = {
   props: TaskGraphRendererProps;
 };
 type TaskFlowNode = Node<TaskNodeData, "task">;
+type FrameFlowNode = Node<{ title: string }, "frame">;
 
 const DIMMED_OPACITY = 0.2;
 // Long chains pan instead of shrinking cards below a readable size.
@@ -69,6 +70,36 @@ export function toFlowNodes(props: TaskGraphRendererProps): TaskFlowNode[] {
   });
 }
 
+export function toFrameNodes(props: TaskGraphRendererProps): FrameFlowNode[] {
+  return (props.frames ?? []).map((frame) => ({
+    id: frame.id,
+    type: "frame",
+    position: { x: frame.box.x, y: frame.box.y },
+    width: frame.box.width,
+    height: frame.box.height,
+    data: { title: frame.title },
+    zIndex: -1,
+    draggable: false,
+    connectable: false,
+    selectable: false,
+    deletable: false,
+    focusable: false,
+  }));
+}
+
+function FrameNode({ data }: NodeProps<FrameFlowNode>) {
+  return (
+    <div
+      data-testid="task-graph-frame"
+      className="pointer-events-none h-full w-full rounded-lg border border-dashed border-muted-foreground/40 bg-muted/20"
+    >
+      <span className="block truncate px-3 pt-1.5 text-[11px] font-medium text-muted-foreground">
+        {data.title}
+      </span>
+    </div>
+  );
+}
+
 export function toFlowEdges(props: TaskGraphRendererProps): Edge[] {
   return props.model.edges.map((edge) => {
     const style = TASK_GRAPH_EDGE_STYLES[edge.status];
@@ -105,16 +136,17 @@ const TaskNode = memo(function TaskNode({ data }: NodeProps<TaskFlowNode>) {
         onMouseLeave={() => props.onNodeEmphasize(null)}
         onFocus={() => props.onNodeEmphasize(node.id)}
         onBlur={() => props.onNodeEmphasize(null)}
+        onDoubleClick={props.onNodeOpen ? () => props.onNodeOpen?.(node.id) : undefined}
         {...press}
       >
-        {props.renderNode(node, nodeRenderState(props.emphasis, node.id))}
+        {props.renderNode(node, nodeRenderState(props.emphasis, node.id, props.selectedId))}
       </button>
       <Handle type="source" position={Position.Right} isConnectable={false} style={HIDDEN_HANDLE} />
     </>
   );
 });
 
-const NODE_TYPES = { task: TaskNode };
+const NODE_TYPES = { task: TaskNode, frame: FrameNode };
 
 const ANCHOR_PX = 24;
 
@@ -176,7 +208,7 @@ function useAriaLabels() {
 export function XyflowTaskGraphRenderer(props: TaskGraphRendererProps) {
   const { t } = useTranslation();
   const ariaLabelConfig = useAriaLabels();
-  const nodes = useMemo(() => toFlowNodes(props), [props]);
+  const nodes = useMemo(() => [...toFrameNodes(props), ...toFlowNodes(props)] as Node[], [props]);
   const edges = useMemo(() => toFlowEdges(props), [props]);
   const nodeKey = props.model.nodes.map((n) => n.id).join(",");
   return (

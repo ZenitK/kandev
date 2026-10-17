@@ -2807,5 +2807,8 @@
   "taskGraphFitView": "全体を表示",
   "taskGraphCanvas": "タスクグラフのキャンバス",
   "panelTaskGraph": "タスクグラフ",
-  "taskGraphShowInGraph": "グラフで表示"
+  "taskGraphShowInGraph": "グラフで表示",
+  "taskGraphOpenTask": "タスクを開く",
+  "taskGraphPreviewTask": "プレビュー",
+  "taskGraphSelectHint": "タスクを選択して開くか、ダブルクリックします。"
 }

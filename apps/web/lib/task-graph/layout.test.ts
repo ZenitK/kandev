@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { TaskGraphResponse } from "@/lib/api/domains/task-graph-api";
 import { buildTaskGraphModel } from "./model";
-import { TASK_GRAPH_NODE_HEIGHT, TASK_GRAPH_NODE_WIDTH, layoutTaskGraph } from "./layout";
+import {
+  TASK_GRAPH_NODE_HEIGHT,
+  TASK_GRAPH_NODE_WIDTH,
+  layoutGroupedTaskGraph,
+  layoutTaskGraph,
+} from "./layout";
 
 function model(ids: string[], edges: Array<[string, string]>) {
   const response: TaskGraphResponse = {
@@ -56,5 +61,30 @@ describe("layoutTaskGraph", () => {
     const ys = ["a", "b", "c"].map((id) => layout.get(id)?.y ?? 0).sort((p, q) => p - q);
     expect(ys[1] - ys[0]).toBeGreaterThanOrEqual(TASK_GRAPH_NODE_HEIGHT);
     expect(ys[2] - ys[1]).toBeGreaterThanOrEqual(TASK_GRAPH_NODE_HEIGHT);
+  });
+});
+
+describe("layoutGroupedTaskGraph", () => {
+  it("frames each group around its members without overlapping other nodes", () => {
+    const m = model(["p", "x", "y", "solo"], [["x", "y"]]);
+    const { nodes, groups } = layoutGroupedTaskGraph(m, [{ id: "group:p", memberIds: ["x", "y"] }]);
+    const frame = groups.get("group:p");
+    expect(frame).toBeDefined();
+    for (const id of ["x", "y"]) {
+      const box = nodes.get(id)!;
+      expect(box.x).toBeGreaterThanOrEqual(frame!.x);
+      expect(box.y).toBeGreaterThanOrEqual(frame!.y);
+      expect(box.x + box.width).toBeLessThanOrEqual(frame!.x + frame!.width);
+      expect(box.y + box.height).toBeLessThanOrEqual(frame!.y + frame!.height);
+    }
+    for (const id of ["p", "solo"]) {
+      const box = nodes.get(id)!;
+      const inside =
+        box.x >= frame!.x &&
+        box.y >= frame!.y &&
+        box.x + box.width <= frame!.x + frame!.width &&
+        box.y + box.height <= frame!.y + frame!.height;
+      expect(inside).toBe(false);
+    }
   });
 });

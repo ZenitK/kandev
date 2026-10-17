@@ -3,7 +3,12 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { TaskGraphResponse } from "@/lib/api/domains/task-graph-api";
 import { layoutTaskGraph } from "@/lib/task-graph/layout";
 import { buildTaskGraphModel, traceChain } from "@/lib/task-graph/model";
-import { XyflowTaskGraphRenderer, toFlowEdges, toFlowNodes } from "./xyflow-task-graph-renderer";
+import {
+  XyflowTaskGraphRenderer,
+  toFlowEdges,
+  toFlowNodes,
+  toFrameNodes,
+} from "./xyflow-task-graph-renderer";
 import type { TaskGraphRendererProps } from "./task-graph-renderer";
 
 beforeAll(() => {
@@ -119,5 +124,34 @@ describe("XyflowTaskGraphRenderer", () => {
     expect(p.onNodeEmphasize).toHaveBeenCalledWith("a");
     expect(p.onNodeActivate).not.toHaveBeenCalled();
     vi.useRealTimers();
+  });
+});
+
+describe("selection", () => {
+  it("rings the selected node and opens a node on double-click", () => {
+    const onNodeOpen = vi.fn();
+    const p = props({
+      selectedId: "b",
+      onNodeOpen,
+      renderNode: (n, state) => <span data-selected={state.selected}>{n.title}</span>,
+    });
+    render(<XyflowTaskGraphRenderer {...p} />);
+    const button = screen.getByRole("button", { name: "label b" });
+    expect(button.querySelector("[data-selected='true']")).not.toBeNull();
+    fireEvent.doubleClick(button);
+    expect(onNodeOpen).toHaveBeenCalledWith("b");
+  });
+});
+
+describe("frames", () => {
+  it("renders labelled background frames behind task nodes", () => {
+    const p = props({
+      frames: [{ id: "group:p", title: "Parent P", box: { x: 0, y: 0, width: 400, height: 200 } }],
+    });
+    expect(toFrameNodes(p)).toMatchObject([
+      { id: "group:p", type: "frame", zIndex: -1, draggable: false, selectable: false },
+    ]);
+    render(<XyflowTaskGraphRenderer {...p} />);
+    expect(screen.getByTestId("task-graph-frame").textContent).toBe("Parent P");
   });
 });

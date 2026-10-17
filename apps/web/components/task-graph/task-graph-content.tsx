@@ -1,21 +1,15 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { IconAlertTriangle, IconInfoCircle } from "@tabler/icons-react";
 import { Button } from "@kandev/ui/button";
 import { Spinner } from "@kandev/ui/spinner";
-import { useTheme } from "@/components/theme/app-theme";
 import { useTaskGraph } from "@/hooks/domains/task/use-task-graph";
-import { useTouchDrawer } from "@/hooks/use-compact-task-chrome";
 import { linkToTask } from "@/lib/links";
 import { useRouter } from "@/lib/routing/client-router";
-import { layoutTaskGraph } from "@/lib/task-graph/layout";
-import { traceChain, type TaskGraphModel, type TaskGraphNode } from "@/lib/task-graph/model";
-import { formatTaskStateLabel } from "@/lib/ui/state-labels";
-import type { TaskState } from "@/lib/types/http";
+import type { TaskGraphModel } from "@/lib/task-graph/model";
 import { TaskGraphLegend } from "./task-graph-legend";
+import { TaskGraphCanvas } from "./task-graph-canvas";
 import { TaskGraphModeSelector } from "./task-graph-mode-selector";
-import { TaskGraphNodeCard } from "./task-graph-node-card";
-import { XyflowTaskGraphRenderer } from "./xyflow-task-graph-renderer";
 
 function Notice({ children }: { children: string }) {
   return (
@@ -63,46 +57,6 @@ function StatusArea({ error, onRetry }: { error: boolean; onRetry: () => void })
   );
 }
 
-function GraphCanvas({
-  model,
-  onActivate,
-}: {
-  model: TaskGraphModel;
-  onActivate: (id: string) => void;
-}) {
-  const { t } = useTranslation();
-  const { resolvedTheme } = useTheme();
-  const touch = useTouchDrawer();
-  const [emphasized, setEmphasized] = useState<string | null>(null);
-  const layout = useMemo(() => layoutTaskGraph(model), [model]);
-  const emphasis = useMemo(
-    () => (emphasized && model.predecessors.has(emphasized) ? traceChain(model, emphasized) : null),
-    [model, emphasized],
-  );
-  const nodeLabel = useCallback(
-    (node: TaskGraphNode) =>
-      t("task:taskGraphNodeLabel", {
-        title: node.title,
-        state: formatTaskStateLabel(node.state as TaskState),
-        step: node.step,
-      }),
-    [t],
-  );
-  return (
-    <XyflowTaskGraphRenderer
-      model={model}
-      layout={layout}
-      emphasis={emphasis}
-      colorMode={resolvedTheme}
-      touch={touch}
-      renderNode={(node, state) => <TaskGraphNodeCard node={node} state={state} />}
-      nodeLabel={nodeLabel}
-      onNodeActivate={onActivate}
-      onNodeEmphasize={setEmphasized}
-    />
-  );
-}
-
 /** Dialog body: lazy-loaded so the graph libraries stay out of task detail. */
 export function TaskGraphContent({
   taskId,
@@ -146,7 +100,7 @@ export function TaskGraphContent({
         className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-md border"
       >
         {model ? (
-          <GraphCanvas model={model} onActivate={activate} />
+          <TaskGraphCanvas model={model} onActivate={activate} />
         ) : (
           <StatusArea error={error} onRetry={retry} />
         )}

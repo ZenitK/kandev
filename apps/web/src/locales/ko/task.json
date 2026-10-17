@@ -2807,5 +2807,8 @@
   "taskGraphFitView": "화면에 맞추기",
   "taskGraphCanvas": "작업 그래프 캔버스",
   "panelTaskGraph": "작업 그래프",
-  "taskGraphShowInGraph": "그래프에서 보기"
+  "taskGraphShowInGraph": "그래프에서 보기",
+  "taskGraphOpenTask": "작업 열기",
+  "taskGraphPreviewTask": "미리 보기",
+  "taskGraphSelectHint": "작업을 선택해 열거나 두 번 클릭하세요."
 }

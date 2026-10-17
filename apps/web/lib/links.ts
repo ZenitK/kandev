@@ -22,16 +22,22 @@ export function linkToTask(taskId: string, layoutOrOptions?: string | TaskLinkOp
   return query ? `${base}?${query}` : base;
 }
 
+/** Home query param naming the task the board Graph view should focus. */
+export const BOARD_GRAPH_FOCUS_PARAM = "graphFocus";
+
 export function linkToTaskOverview({
   workspaceId,
   workflowId,
+  graphFocusTaskId,
 }: {
   workspaceId?: string;
   workflowId?: string;
+  graphFocusTaskId?: string;
 } = {}): string {
   const params = new URLSearchParams({ home: "overview" });
   if (workspaceId) params.set("workspaceId", workspaceId);
   if (workflowId) params.set("workflowId", workflowId);
+  if (graphFocusTaskId) params.set(BOARD_GRAPH_FOCUS_PARAM, graphFocusTaskId);
   return `/?${params.toString()}`;
 }
 

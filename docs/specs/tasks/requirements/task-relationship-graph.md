@@ -223,17 +223,38 @@ first.
   focused, and shall follow it when the user switches task.
 - **AC-TASKS-TASK-RELATIONSHIP-GRAPH-009.3:** The task context menu on sidebar
   rows and Kanban cards shall offer Show in graph for every non-archived task.
-- **AC-TASKS-TASK-RELATIONSHIP-GRAPH-009.4:** Show in graph shall open the
-  chosen task with the graph shown and that task focused: the Task graph tab on
-  desktop, the full-screen sheet on phones.
+- **AC-TASKS-TASK-RELATIONSHIP-GRAPH-009.4:** Show in graph shall show the
+  chosen task focused in the board Graph view on desktop and tablet, and in the
+  full-screen sheet on phones. (Amended by REQ-TASKS-TASK-RELATIONSHIP-GRAPH-010.)
 - **AC-TASKS-TASK-RELATIONSHIP-GRAPH-009.5:** An open Task graph tab shall be
   kept when the workbench layout is saved and restored.
+
+### REQ-TASKS-TASK-RELATIONSHIP-GRAPH-010: Board Graph view
+
+**Intent:** See the whole board's order at once, next to the Pipeline view.
+
+#### Acceptance criteria
+
+- **AC-TASKS-TASK-RELATIONSHIP-GRAPH-010.1:** The Home view switcher shall offer
+  a Graph view beside Pipeline on desktop and tablet. Phones shall fall back to
+  Kanban, as they do for Pipeline.
+- **AC-TASKS-TASK-RELATIONSHIP-GRAPH-010.2:** The Graph view shall draw, per
+  workflow lane, every task the board shows after its filters and search, with
+  connectors for dependency edges between those tasks.
+- **AC-TASKS-TASK-RELATIONSHIP-GRAPH-010.3:** Subtasks shall be enclosed in a
+  frame labelled with their parent's title.
+- **AC-TASKS-TASK-RELATIONSHIP-GRAPH-010.4:** Activating a node shall open that
+  task the way a board card click does.
+- **AC-TASKS-TASK-RELATIONSHIP-GRAPH-010.5:** A link that names a task to focus
+  shall select the Graph view, mark that task as focused, and bring it into
+  view.
+- **AC-TASKS-TASK-RELATIONSHIP-GRAPH-010.6:** The selected Graph view shall be
+  remembered like the other listing views.
 
 ## Out of scope
 
 - Creating, removing, or editing dependency edges or parents in the graph. The
   Edit task dialog remains the editor.
-- A whole-workspace or whole-board graph.
 - Cross-workspace edges, which the dependency system does not allow.
 - Office task pages and the Office blocker picker.
 - Persisting node positions, zoom, or the selected view.
