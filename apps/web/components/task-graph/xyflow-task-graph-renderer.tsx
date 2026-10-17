@@ -29,6 +29,8 @@ type TaskNodeData = {
 type TaskFlowNode = Node<TaskNodeData, "task">;
 
 const DIMMED_OPACITY = 0.2;
+// Long chains pan instead of shrinking cards below a readable size.
+const FIT_VIEW_OPTIONS = { padding: 0.15, minZoom: 0.75, maxZoom: 1 };
 const HIDDEN_HANDLE: CSSProperties = { opacity: 0, pointerEvents: "none" };
 // xyflow disables pointer events on non-selectable, non-draggable nodes; the
 // node's own button needs them.
@@ -113,13 +115,26 @@ const TaskNode = memo(function TaskNode({ data }: NodeProps<TaskFlowNode>) {
 
 const NODE_TYPES = { task: TaskNode };
 
-/** Re-fits when the displayed node set changes (mode switch, new subtask). */
+const LEFT_ANCHOR_PX = 24;
+
+/**
+ * Re-fits when the displayed node set changes (mode switch, new subtask). A
+ * graph too wide for the readable zoom floor is anchored at step 1, not centred.
+ */
 function FitOnNodeSetChange({ nodeKey }: { nodeKey: string }) {
-  const { fitView } = useReactFlow();
+  const { fitView, getNodes, getNodesBounds, getViewport, setViewport } = useReactFlow();
   useEffect(() => {
-    const frame = requestAnimationFrame(() => void fitView({ padding: 0.15 }));
+    const frame = requestAnimationFrame(() => {
+      void fitView(FIT_VIEW_OPTIONS).then(() => {
+        const viewport = getViewport();
+        const bounds = getNodesBounds(getNodes());
+        if (viewport.x + bounds.x * viewport.zoom < 0) {
+          void setViewport({ ...viewport, x: LEFT_ANCHOR_PX - bounds.x * viewport.zoom });
+        }
+      });
+    });
     return () => cancelAnimationFrame(frame);
-  }, [nodeKey, fitView]);
+  }, [nodeKey, fitView, getNodes, getNodesBounds, getViewport, setViewport]);
   return null;
 }
 
@@ -165,7 +180,7 @@ export function XyflowTaskGraphRenderer(props: TaskGraphRendererProps) {
         minZoom={0.2}
         maxZoom={2}
         fitView
-        fitViewOptions={{ padding: 0.15 }}
+        fitViewOptions={FIT_VIEW_OPTIONS}
         onPaneClick={() => props.onNodeEmphasize(null)}
       >
         <Background gap={16} />

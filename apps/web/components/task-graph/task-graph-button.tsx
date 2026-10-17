@@ -1,8 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { IconHierarchy3 } from "@tabler/icons-react";
-import { Button } from "@kandev/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@kandev/ui/tooltip";
 import { useTaskGraphAvailable } from "@/hooks/domains/task/use-task-graph-available";
 import { TaskGraphDialog } from "./task-graph-dialog";
 
@@ -13,26 +11,20 @@ export function TaskGraphButton({ taskId }: { taskId: string | null }) {
   const [open, setOpen] = useState(false);
   if (!taskId || !available) return null;
   return (
-    <Tooltip>
-      <TaskGraphDialog
-        taskId={taskId}
-        open={open}
-        onOpenChange={setOpen}
-        trigger={
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label={t("task:taskGraphTitle")}
-              data-testid="task-graph-button"
-              className="cursor-pointer text-muted-foreground [@media(pointer:coarse)]:size-11"
-            >
-              <IconHierarchy3 className="size-3.5" />
-            </Button>
-          </TooltipTrigger>
-        }
-      />
-      <TooltipContent>{t("task:taskGraphTitle")}</TooltipContent>
-    </Tooltip>
+    <TaskGraphDialog
+      taskId={taskId}
+      open={open}
+      onOpenChange={setOpen}
+      trigger={
+        <button
+          type="button"
+          data-testid="task-graph-button"
+          className="inline-flex h-[26px] shrink-0 cursor-pointer items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium leading-none text-muted-foreground transition-colors hover:bg-accent hover:text-foreground [@media(pointer:coarse)]:min-h-11"
+        >
+          <IconHierarchy3 aria-hidden="true" className="size-3.5" />
+          {t("task:taskGraphTitle")}
+        </button>
+      }
+    />
   );
 }

@@ -1,6 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { TooltipProvider } from "@kandev/ui/tooltip";
 
 const available = vi.hoisted(() => ({ value: true }));
 vi.mock("@/hooks/domains/task/use-task-graph-available", () => ({
@@ -17,11 +16,7 @@ import { TaskGraphButton } from "./task-graph-button";
 afterEach(cleanup);
 
 function renderButton(taskId: string | null) {
-  return render(
-    <TooltipProvider>
-      <TaskGraphButton taskId={taskId} />
-    </TooltipProvider>,
-  );
+  return render(<TaskGraphButton taskId={taskId} />);
 }
 
 describe("TaskGraphButton", () => {

@@ -250,7 +250,7 @@ A lint rule (`no-restricted-imports` in `apps/web/eslint.config.mjs`) rejects
 
 ## Entry points
 
-`TaskGraphButton` is an icon button with a tooltip. It is mounted next to
+`TaskGraphButton` is a labelled "Task graph" pill styled like the dependency chip. It is mounted next to
 `TaskDependencyChip` in `components/task/chat/chat-status-bar.tsx` and
 `components/task/passthrough-toolbar.tsx`. It renders when the store task has
 dependency refs, a `parentTaskId`, or a subtask from `useTaskSubtasks`. Only
@@ -288,7 +288,9 @@ canvas when `truncated` is true.
 - `onMouseEnter`, `onFocus`, `onMouseLeave`, and `onBlur` call
   `onNodeEmphasize`. Emphasized elements keep full opacity; others drop to
   reduced opacity.
-- `fitView` runs on initial render and after a mode change. The xyflow
+- `fitView` runs on initial render and after a mode change, with a zoom floor
+  of 0.75 so cards stay readable. A graph wider than the canvas at that floor
+  is anchored at step 1 and panned, not centred. The xyflow
   `Controls` provide zoom in, zoom out, and fit view.
 
 ## Live refresh
