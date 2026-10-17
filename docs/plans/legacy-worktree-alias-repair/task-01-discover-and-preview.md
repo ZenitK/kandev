@@ -1,7 +1,7 @@
 ---
 id: "01-discover-and-preview"
 title: "Discover and preview duplicate claims"
-status: pending
+status: done
 wave: 1
 depends_on: []
 plan: "plan.md"
@@ -92,4 +92,24 @@ Discovery is not a trusted offline preview or authority to select a winner.
 
 ## Results
 
-Pending.
+Completed 2026-10-16.
+
+- RED: `TestAliasPreviewCanonicalProof` rejected the unknown `aliases` field.
+  `TestAliasDiscoveryCommand` rejected `--discover`.
+- Added bounded inventory discovery, version-2 decoding, canonical Git/root proof,
+  shared-group/session/snapshot validation, dependency observations, and refusal tests.
+- The oversized-input regression exposed trailing data beyond the decoder limit.
+  The decoder now checks the complete bounded input.
+- Full task race command passed: inventoryrepair 246.713s, command 1.182s.
+- After the final refinements, `go test -trimpath -race
+  ./internal/task/inventoryrepair ./cmd/worktree-inventory-repair
+  -run 'TestAlias|TestDecode|TestCommand' -count=1` passed (41.946s, 1.093s).
+- Scoped lint passed with 0 issues. The final package lint invocation was
+  `bash scripts/lint-go-changed apps/backend/internal/task/inventoryrepair/alias_plan.go
+  apps/backend/cmd/worktree-inventory-repair/main.go`. This helper checks both complete
+  affected packages, including all new helpers and tests.
+- `git diff --check` passed.
+
+Additional implementation files are `alias_plan.go`, `alias_shared.go`,
+`alias_dependencies.go`, and `inspect.go`. Version-2 command mutation remains
+blocked until Task 02.

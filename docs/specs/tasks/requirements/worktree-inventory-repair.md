@@ -92,9 +92,9 @@ This is explicit maintenance of selected records. It does not extend automatic
 **Intent:** Let operators repair older task inventories that give one physical
 checkout multiple saved owners or paths, without losing task conversations or work.
 
-This extension is proposed by the
+This extension is delivered by the
 [legacy duplicate repair package](../../../plans/legacy-worktree-alias-repair/plan.md).
-Its implementation is pending. Existing repair guarantees remain applicable.
+Existing repair guarantees remain applicable.
 
 #### Acceptance criteria
 

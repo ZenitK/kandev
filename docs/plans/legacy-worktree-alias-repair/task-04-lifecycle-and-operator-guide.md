@@ -1,7 +1,7 @@
 ---
 id: "04-lifecycle-and-operator-guide"
 title: "Verify lifecycle recovery and document operation"
-status: pending
+status: done
 wave: 4
 depends_on:
   - "03-guard-runtime-identity"
@@ -61,9 +61,9 @@ rendered UI changes, or claiming unsupported PostgreSQL/non-Linux application.
 ## Verification
 
 ```bash
-(cd apps/backend && go test -trimpath -race ./internal/task/service ./internal/task/handlers -run TestLegacyAliasLifecycle -count=1)
+(cd apps/backend && go test -trimpath -race ./internal/task/inventoryrepair -run TestLegacyAliasLifecycle -count=1)
 (cd apps/backend && go test -trimpath -race ./internal/task/inventoryrepair ./cmd/worktree-inventory-repair -count=1)
-bash scripts/lint-go-changed apps/backend/internal/task/service/legacy_alias_lifecycle_test.go apps/backend/internal/task/handlers/legacy_alias_lifecycle_test.go
+bash scripts/lint-go-changed apps/backend/internal/task/inventoryrepair/legacy_alias_lifecycle_test.go apps/backend/internal/task/inventoryrepair/legacy_alias_preservation_test.go apps/backend/internal/task/inventoryrepair/legacy_alias_cascade_test.go
 node --test scripts/validate-public-docs.test.mjs
 node scripts/validate-public-docs.mjs
 python3 scripts/list-docs.py validate
@@ -79,8 +79,7 @@ this package implemented. No generic full-backend or browser audit is added.
 
 ## Files likely touched
 
-- New `apps/backend/internal/task/service/legacy_alias_lifecycle_test.go`.
-- New `apps/backend/internal/task/handlers/legacy_alias_lifecycle_test.go`.
+- New `apps/backend/internal/task/inventoryrepair/legacy_alias_{lifecycle,preservation,cascade}_test.go`.
 - Inventory-repair test helpers only where needed for reusable real fixtures.
 - `docs/public/git-operations.md` and relevant links in `docs/public/operations.md`.
 - The paired inventory-repair requirement/design, this package, and the companion
@@ -107,4 +106,48 @@ Do not weaken file/ownership guards to obtain a successful end-to-end test.
 
 ## Results
 
-Pending.
+Lifecycle coverage lives in `internal/task/inventoryrepair` so it can reuse the
+private isolated-host audit fixture. It invokes the real task service, handoff
+service, worktree manager, and registered HTTP routes. No production test hook
+or duplicate fixture package was added. The verification commands above use
+these final test locations.
+
+The initial cascade fixture omitted the restore configuration saved by normal
+materialization. The fixture now uses the real Office schema and a complete
+single-repository group record. The first assertions also treated queued cleanup
+as synchronous and assumed cascade archive removes a borrower's checkout.
+The final tests exercise the durable cleanup worker and preserve the existing
+borrower guard.
+
+Canonical controls reproduce two existing lifecycle outcomes without repair:
+
+- Cascade archive persists both archive states but retains the checkout while
+  the child's terminal session still binds to the shared environment. Reclaim
+  remains `waiting_for_clean`.
+- Confirmed cascade delete returns HTTP 503 with `pending: true` after deleting
+  both tasks. The durable cleanup jobs subsequently succeed and remove the
+  checkout. The workspace group retains `cleanup_failed` with `worktree wt:
+  worktree not found`, because its ID-based cleanup runs after inventory deletion.
+
+This package does not change these existing lifecycle policies or group-status
+handling. The tests assert task persistence, actual filesystem outcome, and
+separate job/group evidence. The operator guide states this limitation.
+
+Final targeted lifecycle race tests passed (68.173s). They also cover preserved
+messages/turns/conversation IDs, provider resume tokens, snapshots, healthy branch
+slots, staged/unstaged/untracked/ignored content, deletion confirmation, discard
+consent, and immutable cancelled cleanup evidence. The full repair/CLI race run passed with `-timeout 20m`.
+The final package results are recorded below.
+
+Documentation checks passed: public-doc tests (63), public-doc validation,
+catalog validation (384 decisions and 1,616 specifications), spec tests (36),
+full spec lint, actual-diff `validateCoverage`, and `git diff --check`.
+Final scoped inventory-repair lint passed with zero issues.
+Screenshots are not required because this package changes no rendered UI.
+
+Full race-suite output:
+
+```text
+ok  	github.com/kandev/kandev/internal/task/inventoryrepair	321.432s
+ok  	github.com/kandev/kandev/cmd/worktree-inventory-repair	1.126s
+```

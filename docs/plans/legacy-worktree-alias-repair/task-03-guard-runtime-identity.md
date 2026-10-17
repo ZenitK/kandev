@@ -1,7 +1,7 @@
 ---
 id: "03-guard-runtime-identity"
 title: "Reject ambiguous runtime identity"
-status: pending
+status: done
 wave: 3
 depends_on:
   - "02-reconcile-shared-inventory"
@@ -97,4 +97,48 @@ read and use the established transaction-scoped advisory-lock pattern.
 
 ## Results
 
-Pending.
+Implementation and required checks complete.
+
+- RED: competing owners passed every store read and ten ID-based writes.
+  Several writes changed both rows. A replacement upsert also discarded an
+  ambiguous old identity.
+- RED: real cleanup removed a checkout before its metadata update returned an
+  ownership error. Cleanup now checks inventory before filesystem changes.
+- Focused race tests passed: worktree 50.792s, repository 13.995s.
+- Both PostgreSQL conflict tests passed against a disposable PostgreSQL 17
+  database. Removing the physical-ID lock made both tests fail because the
+  competing writer completed before the required lock wait. Restored the lock.
+- RED: a PostgreSQL transition resumed after a physical-ID replacement and
+  restored the stale ID. The batch guard now compares its observed slot IDs
+  after acquiring all physical locks and refuses changed identities.
+- SQL guard passed. Lint required moving cleanup identity helpers into
+  `manager_cleanup_identity.go` to stay within the file-size limit.
+
+The shared helper is `internal/task/physicalclaim`. It counts inventory slots
+without session joins and locks physical IDs in sorted order on PostgreSQL.
+No migration or global unique index was added.
+
+The first full worktree run reached Go's 10-minute timeout. It also exposed a
+cancellation-error regression in cleanup identity capture. The new check now
+preserves the established `CleanupInspectionError` classification. Three
+permission tests inherited the runner's restrictive `0077` umask, and one
+existing test used `/bin/rm`, which this Nix host does not provide. The test shim
+now resolves `rm` through PATH. The final full run uses `umask 022` and
+`-timeout 30m -v`; it passed (571.641s).
+
+Final repository race checks passed (90.714s), including the stale-transition
+case. Store conformance passed with PostgreSQL enabled (320.454s). SQL guard and
+scoped lint passed after the final repository change. The PostgreSQL database
+uses a private temporary Unix socket and isolated per-test schemas.
+
+The final recovery error-chain change preserves the typed ambiguity cause without
+changing the displayed error. All new and changed worktree regressions passed
+again after that change (147.560s), including cleanup cancellation/deadline
+classification and the portable removal shim. Final scoped lint passed.
+
+Final full-suite invocation:
+`umask 022; KANDEV_TEST_POSTGRES_DSN=<disposable database> go test -trimpath -race -timeout 30m -v ./internal/worktree -count=1`.
+The remaining verification commands above passed, including PostgreSQL-enabled
+store conformance. Final lint selected `store.go`, `task_environment.go`,
+`physicalclaim/claim.go`, and `models/worktree_identity.go`; the helper checked
+all Go files in those packages. `git diff --check` passed.

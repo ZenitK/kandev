@@ -30,7 +30,7 @@ continues to follow [metadata recovery](worktree-metadata-recovery.md).
 | `REQ-TASKS-WORKTREE-INVENTORY-REPAIR-001` | Maintenance entry point; validation; journaled application |
 | `REQ-TASKS-WORKTREE-INVENTORY-REPAIR-002` | Repository repair; cleanup evidence |
 | `REQ-TASKS-WORKTREE-INVENTORY-REPAIR-003` | Stop diagnostics |
-| `REQ-TASKS-WORKTREE-INVENTORY-REPAIR-004` | Proposed duplicate ownership extension |
+| `REQ-TASKS-WORKTREE-INVENTORY-REPAIR-004` | Duplicate ownership reconciliation |
 
 ## Maintenance entry point
 
@@ -102,9 +102,9 @@ Preflight the complete requested change set before any move or database write:
 Version 1 does not merge slots or infer new branch slugs. An absent checkout
 cannot establish an incomplete repository identity.
 
-## Proposed duplicate ownership extension
+## Duplicate ownership reconciliation
 
-This section is a pending extension delivered by the
+This section describes the extension delivered by the
 [legacy duplicate repair package](../../../plans/legacy-worktree-alias-repair/plan.md).
 It preserves the existing explicit maintenance boundary. It is not a startup
 migration, a read-time normalization, or permission to ignore a failed Git check.

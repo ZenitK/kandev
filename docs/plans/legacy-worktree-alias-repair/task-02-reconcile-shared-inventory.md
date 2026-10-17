@@ -1,7 +1,7 @@
 ---
 id: "02-reconcile-shared-inventory"
 title: "Apply and recover exact reconciliation"
-status: pending
+status: done
 wave: 2
 depends_on:
   - "01-discover-and-preview"
@@ -96,4 +96,20 @@ An idle session can still have a live agentctl consumer.
 
 ## Results
 
-Pending.
+Passed on disposable fixtures:
+
+- Full repair, CLI, and ownership-lock race tests passed (320.728s, 1.220s,
+  and 4.047s respectively).
+- Backend startup-fence tests passed (1.302s).
+- SQL guard passed after adding a narrow exemption for SQLite-only offline
+  schema inspection.
+- Store conformance race tests passed (191.778s).
+- Scoped lint passed with zero issues. Final invocation:
+  `bash scripts/lint-go-changed apps/backend/internal/task/inventoryrepair/alias_apply.go apps/backend/cmd/worktree-inventory-repair/main.go`.
+  The helper checks every Go file in both changed packages.
+- Apply, rollback, interruption recovery, stale observations, dependent rows,
+  raw timestamps, and original consumer-path process checks passed.
+
+An environment interruption invalidated two earlier test runs. Both full runs
+above were restarted and completed with recorded exit status zero. No live
+installation data changed.

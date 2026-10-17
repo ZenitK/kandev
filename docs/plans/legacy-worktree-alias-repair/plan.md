@@ -1,6 +1,6 @@
 ---
 created: 2026-10-16
-status: draft
+status: complete
 requirements:
   - REQ-TASKS-WORKTREE-INVENTORY-REPAIR-001
   - REQ-TASKS-WORKTREE-INVENTORY-REPAIR-002
@@ -75,7 +75,7 @@ from the investigated installation.
 Use the existing `internal/task/inventoryrepair` command, row observations,
 process census, private backup, journal, and startup fence. Add duplicate-specific
 validation and mutations rather than weakening version-1 uniqueness checks.
-The proposed extension in the linked system design defines canonical proof,
+The extension in the linked system design defines canonical proof,
 dependent-reference policy, bounded input, transaction boundaries, and rollback.
 
 The canonical row is explicitly selected and independently proven. Neither
@@ -127,15 +127,15 @@ change, and existing desktop and phone actions use the tested lifecycle APIs.
 
 ## Work orders
 
-- [ ] [Task 01: Discover and preview duplicate claims](task-01-discover-and-preview.md)
-- [ ] [Task 02: Apply and recover exact reconciliation](task-02-reconcile-shared-inventory.md)
-- [ ] [Task 03: Reject ambiguous runtime identity](task-03-guard-runtime-identity.md)
-- [ ] [Task 04: Verify lifecycle recovery and document operation](task-04-lifecycle-and-operator-guide.md)
+- [x] [Task 01: Discover and preview duplicate claims](task-01-discover-and-preview.md)
+- [x] [Task 02: Apply and recover exact reconciliation](task-02-reconcile-shared-inventory.md)
+- [x] [Task 03: Reject ambiguous runtime identity](task-03-guard-runtime-identity.md)
+- [x] [Task 04: Verify lifecycle recovery and document operation](task-04-lifecycle-and-operator-guide.md)
 
 ## Companion packages
 
 - [Existing inventory repair](../worktree-inventory-repair/plan.md) remains complete
-  for its delivered version-1 scope. This extension has separate pending work orders.
+  for its delivered version-1 scope. This extension has separate work orders and validation records.
 - [Missing checkout cleanup preparation](../missing-worktree-cleanup-preparation/plan.md)
   already delivers #4420. Do not duplicate that fix or treat its tests as duplicate repair.
 - [Preserve physical inventory](../preserve-task-worktree-inventory/plan.md) protects
@@ -154,10 +154,15 @@ Design validation on 2026-10-16:
   document-coverage evidence, not implementation validation.
 - Work-package relative links resolve. Changed-path whitespace checks passed.
 
-Implementation and live installation repair are pending. Each work order owns
-exact implementation commands. No production or permanent test files changed in
-this design turn. After all four work orders pass, rerun catalog/spec checks,
-documentation coverage over the actual source diff, and whitespace checks.
+The design turn changed no production or permanent test files. The user later
+authorized implementation in this session. All four work orders are complete
+and record their actual test results.
+Race tests, real PostgreSQL concurrency checks, store conformance, SQL guard,
+scoped lint, documentation checks, and actual-diff coverage passed. Live
+installation repair and deployment remain outside this delivery.
+Task 04 documents canonical lifecycle controls: borrower protection can defer
+archive reclaim, and cascade delete can retain a group cleanup error after its
+durable task cleanup succeeds. The repair does not change those behaviors.
 
 ## Risks
 
