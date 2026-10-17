@@ -10,6 +10,7 @@ requirements:
   - REQ-TASKS-TASK-RELATIONSHIP-GRAPH-006
   - REQ-TASKS-TASK-RELATIONSHIP-GRAPH-007
   - REQ-TASKS-TASK-RELATIONSHIP-GRAPH-008
+  - REQ-TASKS-TASK-RELATIONSHIP-GRAPH-009
 created: 2026-10-17
 owners:
   - kandev
@@ -45,6 +46,7 @@ Renderer isolation follows
 | `REQ-TASKS-TASK-RELATIONSHIP-GRAPH-006` | [Renderer boundary](#renderer-boundary), [Interaction](#interaction) |
 | `REQ-TASKS-TASK-RELATIONSHIP-GRAPH-007` | [Bounds and failure](#bounds-and-failure) |
 | `REQ-TASKS-TASK-RELATIONSHIP-GRAPH-008` | [Responsive behavior](#responsive-behavior) |
+| `REQ-TASKS-TASK-RELATIONSHIP-GRAPH-009` | [Workbench tab](#workbench-tab), [Show in graph](#show-in-graph) |
 
 ## Graph read contract
 
@@ -289,8 +291,10 @@ canvas when `truncated` is true.
   `onNodeEmphasize`. Emphasized elements keep full opacity; others drop to
   reduced opacity.
 - `fitView` runs on initial render and after a mode change, with a zoom floor
-  of 0.75 so cards stay readable. A graph wider than the canvas at that floor
-  is anchored at step 1 and panned, not centred. The xyflow
+  of 0.75 so cards stay readable. A graph larger than the canvas at that floor
+  is centred on the focused task when it is a node, and otherwise anchored at
+  its top-left (step 1). The fit waits for the canvas size, not node
+  measurement, because node sizes are explicit. The xyflow
   `Controls` provide zoom in, zoom out, and fit view.
 
 ## Live refresh
@@ -316,6 +320,34 @@ reset the viewport unless the node set changes.
   the same size through the CSS variable override on coarse pointers.
 - The sheet uses `overflow-hidden` with the canvas at `100%` width, so the
   document cannot scroll horizontally.
+
+## Workbench tab
+
+On desktop the graph is the `task-graph` dockview panel, a fixed-id panel
+listed in `KNOWN_PANEL_IDS`, `RENDERABLE_COMPONENT_NAMES`, both
+`PANEL_RENDERERS` tables, and `PANEL_REGISTRY` (`task:panelTaskGraph`), so the
+layout serializer keeps it. `addTaskGraphPanel` in
+`lib/state/dockview-extra-panel-actions.ts` opens it with `inCenter: true`
+through `addSidePanel`, which focuses an existing tab. The panel carries no
+params: `TaskGraphPanel` reads `tasks.activeTaskId`, so it follows task
+switches and node activation (which only navigates). The dialog shell is now
+the phone sheet only.
+
+## Show in graph
+
+`linkToTask(taskId, { panel: "task-graph" })` adds `?panel=task-graph`.
+`TaskGraphPanelRequest`, mounted once in `TaskLayout`, reads the param; on
+desktop it waits for the dockview `api` and `isRestoringLayout === false`, calls
+`addTaskGraphPanel`, and on phones it opens the sheet. When the active session
+has an environment, it also waits until `currentLayoutEnvId` equals that
+environment, because applying an environment layout replaces the panels; a
+session that still belongs to the previous task counts as not ready. A first
+visit can create the environment after the request is fulfilled, so the
+component re-adds the tab once when that environment's layout is adopted. It then replaces the URL
+without the param so reloads and back navigation do not reopen it. The sidebar
+context menu (`TaskShowInGraphItem` in the relationships group) and the Kanban
+card menu (`buildShowGraphEntry`) push that link. The status-row button and
+the chip action call the same open path for the current task.
 
 ## Localization
 

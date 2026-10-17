@@ -73,6 +73,10 @@ test("mobile task graph opens full screen with touch-sized controls", async ({
   ).toHaveAttribute("data-dimmed", "true");
   await expect(testPage).toHaveURL(new RegExp(`/t/${a.id}$`));
 
+  // The phone canvas is centred on the focused task; zoom out to reach its dependent.
+  const zoomOut = dialog.locator(".react-flow__controls-zoomout");
+  await zoomOut.tap();
+  await zoomOut.tap();
   await testPage.getByTestId(`task-graph-node-${b.id}`).tap();
   await expect(testPage).toHaveURL(new RegExp(`/t/${b.id}$`));
   await expect(dialog).toHaveCount(0);

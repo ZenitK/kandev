@@ -2805,5 +2805,7 @@
   "taskGraphZoomIn": "확대",
   "taskGraphZoomOut": "축소",
   "taskGraphFitView": "화면에 맞추기",
-  "taskGraphCanvas": "작업 그래프 캔버스"
+  "taskGraphCanvas": "작업 그래프 캔버스",
+  "panelTaskGraph": "작업 그래프",
+  "taskGraphShowInGraph": "그래프에서 보기"
 }

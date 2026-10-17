@@ -35,7 +35,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@kandev/ui/popover";
 import { cn } from "@kandev/ui/lib/utils";
 import TaskLink from "@/components/routing/task-link";
-import { TaskGraphDialog } from "@/components/task-graph/task-graph-dialog";
+import { useOpenTaskGraph } from "@/hooks/domains/task/use-open-task-graph";
 import { useTouchDrawer } from "@/hooks/use-compact-task-chrome";
 import {
   useTaskDependencies,
@@ -280,8 +280,8 @@ function ChipPopover({ data, open, setOpen, triggerRef, onViewGraph }: ChipSurfa
 export function TaskDependencyChip({ taskId }: { taskId: string | null }) {
   const data = useTaskDependencies(taskId);
   const usesMobileDrawer = useTouchDrawer();
+  const openTaskGraph = useOpenTaskGraph();
   const [open, setOpen] = useState(false);
-  const [graphOpen, setGraphOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   // No edges in either direction: nothing to say. Same null-when-not-applicable
   // contract as PRStatusChip.
@@ -294,20 +294,10 @@ export function TaskDependencyChip({ taskId }: { taskId: string | null }) {
     triggerRef,
     onViewGraph: () => {
       setOpen(false);
-      setGraphOpen(true);
+      openTaskGraph(taskId);
     },
   };
-  return (
-    <>
-      {usesMobileDrawer ? <ChipDrawer {...surface} /> : <ChipPopover {...surface} />}
-      <TaskGraphDialog
-        taskId={taskId}
-        open={graphOpen}
-        onOpenChange={setGraphOpen}
-        returnFocusTo={triggerRef}
-      />
-    </>
-  );
+  return usesMobileDrawer ? <ChipDrawer {...surface} /> : <ChipPopover {...surface} />;
 }
 
 /** Badge form used where a chip trigger is not appropriate (e.g. compact rows). */

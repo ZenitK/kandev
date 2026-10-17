@@ -2805,5 +2805,7 @@
   "taskGraphZoomIn": "拡大",
   "taskGraphZoomOut": "縮小",
   "taskGraphFitView": "全体を表示",
-  "taskGraphCanvas": "タスクグラフのキャンバス"
+  "taskGraphCanvas": "タスクグラフのキャンバス",
+  "panelTaskGraph": "タスクグラフ",
+  "taskGraphShowInGraph": "グラフで表示"
 }

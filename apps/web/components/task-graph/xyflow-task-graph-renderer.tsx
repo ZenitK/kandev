@@ -9,6 +9,7 @@ import {
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
+  useStore,
   type Edge,
   type Node,
   type NodeProps,
@@ -115,26 +116,45 @@ const TaskNode = memo(function TaskNode({ data }: NodeProps<TaskFlowNode>) {
 
 const NODE_TYPES = { task: TaskNode };
 
-const LEFT_ANCHOR_PX = 24;
+const ANCHOR_PX = 24;
 
 /**
  * Re-fits when the displayed node set changes (mode switch, new subtask). A
- * graph too wide for the readable zoom floor is anchored at step 1, not centred.
+ * graph larger than the canvas at the readable zoom floor is centred on the
+ * focused task when it is displayed, otherwise anchored at its top-left (step 1).
  */
-function FitOnNodeSetChange({ nodeKey }: { nodeKey: string }) {
-  const { fitView, getNodes, getNodesBounds, getViewport, setViewport } = useReactFlow();
+function FitOnNodeSetChange({ nodeKey, focusId }: { nodeKey: string; focusId: string }) {
+  const { fitView, getNode, getNodes, getNodesBounds, getViewport, setViewport, setCenter } =
+    useReactFlow();
+  const paneWidth = useStore((state) => state.width);
+  const paneHeight = useStore((state) => state.height);
+  // Node sizes are explicit, so the fit only has to wait for the canvas size.
+  const ready = paneWidth > 0 && paneHeight > 0;
   useEffect(() => {
+    if (!ready) return;
     const frame = requestAnimationFrame(() => {
       void fitView(FIT_VIEW_OPTIONS).then(() => {
         const viewport = getViewport();
         const bounds = getNodesBounds(getNodes());
-        if (viewport.x + bounds.x * viewport.zoom < 0) {
-          void setViewport({ ...viewport, x: LEFT_ANCHOR_PX - bounds.x * viewport.zoom });
+        const overflows =
+          bounds.width * viewport.zoom > paneWidth || bounds.height * viewport.zoom > paneHeight;
+        if (!overflows) return;
+        const focus = getNode(focusId);
+        if (focus?.width && focus.height) {
+          void setCenter(focus.position.x + focus.width / 2, focus.position.y + focus.height / 2, {
+            zoom: viewport.zoom,
+          });
+          return;
         }
+        const x = Math.max(viewport.x, ANCHOR_PX - bounds.x * viewport.zoom);
+        const y = Math.max(viewport.y, ANCHOR_PX - bounds.y * viewport.zoom);
+        void setViewport({ ...viewport, x, y });
       });
     });
     return () => cancelAnimationFrame(frame);
-  }, [nodeKey, fitView, getNodes, getNodesBounds, getViewport, setViewport]);
+    // Pane size changes alone must not re-fit and discard the user's pan.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, nodeKey, focusId]);
   return null;
 }
 
@@ -179,8 +199,6 @@ export function XyflowTaskGraphRenderer(props: TaskGraphRendererProps) {
         zoomOnDoubleClick={false}
         minZoom={0.2}
         maxZoom={2}
-        fitView
-        fitViewOptions={FIT_VIEW_OPTIONS}
         onPaneClick={() => props.onNodeEmphasize(null)}
       >
         <Background gap={16} />
@@ -190,7 +208,7 @@ export function XyflowTaskGraphRenderer(props: TaskGraphRendererProps) {
           // xyflow's stylesheet is unlayered, so it beats layered utilities.
           className={cn(props.touch && "[&>button]:size-11!")}
         />
-        <FitOnNodeSetChange nodeKey={nodeKey} />
+        <FitOnNodeSetChange nodeKey={nodeKey} focusId={props.model.focusId} />
       </ReactFlow>
     </ReactFlowProvider>
   );

@@ -10,6 +10,7 @@ requirements:
   - REQ-TASKS-TASK-RELATIONSHIP-GRAPH-006
   - REQ-TASKS-TASK-RELATIONSHIP-GRAPH-007
   - REQ-TASKS-TASK-RELATIONSHIP-GRAPH-008
+  - REQ-TASKS-TASK-RELATIONSHIP-GRAPH-009
 system_design:
   - ../../specs/tasks/system-design/task-relationship-graph.md
 legacy_specs: []
@@ -210,6 +211,7 @@ Preview mapping: UI-01 → `AC-…-001.1`, `.2`, `.4`; UI-02 → `002.*`, `004.*
 - [x] [Task 01: Add the task graph read](task-01-task-graph-read.md)
 - [x] [Task 02: Add the graph model and layout](task-02-graph-model-layout.md)
 - [x] [Task 03: Add the graph dialog and renderer](task-03-graph-dialog-renderer.md)
+- [x] [Task 04: Move the graph into a workbench tab with Show in graph](task-04-workbench-tab.md)
 
 ## Verification
 

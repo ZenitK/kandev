@@ -1,6 +1,8 @@
 import { expect, test } from "../../fixtures/test-base";
 import type { ApiClient } from "../../helpers/api-client";
 import { waitForHttp } from "../../helpers/causal-waits";
+import { KanbanPage } from "../../pages/kanban-page";
+import { SessionPage } from "../../pages/session-page";
 
 // Task relationship graph (docs/specs/tasks/requirements/task-relationship-graph.md).
 // Topology: outside → a → b → c, with sibling d unordered, all children of parent.
@@ -32,7 +34,7 @@ const node = (page: import("@playwright/test").Page, id: string) =>
   page.getByTestId(`task-graph-node-${id}`);
 
 test.describe("Task graph", () => {
-  test("shows subtasks in order, follows live state and navigates", async ({
+  test("opens as a workbench tab, shows order, follows live state and navigates", async ({
     testPage,
     apiClient,
     seedData,
@@ -40,12 +42,12 @@ test.describe("Task graph", () => {
     const g = await seedGraph(apiClient, seedData);
     await testPage.goto(`/t/${g.b.id}`);
 
-    const button = testPage.getByTestId("task-graph-button").first();
-    await button.click();
-    const dialog = testPage.getByTestId("task-graph-dialog");
-    await expect(dialog).toBeVisible();
-    await expect(dialog.getByTestId("task-graph-root")).toHaveText(g.parent.title);
-    await expect(dialog.getByTestId("task-graph-mode-subtasks")).toHaveAttribute(
+    await testPage.getByTestId("task-graph-button").first().click();
+    const panel = testPage.getByTestId("task-graph-panel");
+    await expect(panel).toBeVisible();
+    await expect(testPage).not.toHaveURL(/panel=task-graph/);
+    await expect(panel.getByTestId("task-graph-root")).toHaveText(g.parent.title);
+    await expect(panel.getByTestId("task-graph-mode-subtasks")).toHaveAttribute(
       "aria-checked",
       "true",
     );
@@ -55,16 +57,14 @@ test.describe("Task graph", () => {
     await expect(node(testPage, g.b.id)).toHaveAccessibleName(/step 3$/);
     await expect(node(testPage, g.c.id)).toHaveAccessibleName(/step 4$/);
     await expect(node(testPage, g.d.id)).toHaveAccessibleName(/step 1$/);
-    await expect(dialog.getByText("Outside this task")).toBeVisible();
-    await expect(dialog.getByText("This task", { exact: true })).toBeVisible();
-    await expect(dialog.getByTestId("task-graph-legend")).toContainText("Waiting");
+    await expect(panel.getByText("Outside this task")).toBeVisible();
+    await expect(panel.getByText("This task", { exact: true })).toBeVisible();
+    await expect(panel.getByTestId("task-graph-legend")).toContainText("Waiting");
 
     // Hovering A emphasizes its chain and dims the unrelated sibling.
     await node(testPage, g.a.id).hover();
-    const dCard = node(testPage, g.d.id).getByTestId("task-graph-node-card");
-    await expect(dCard).toHaveAttribute("data-dimmed", "true");
-    await expect(node(testPage, g.c.id).getByTestId("task-graph-node-card")).toHaveAttribute(
-      "data-emphasized",
+    await expect(node(testPage, g.d.id).getByTestId("task-graph-node-card")).toHaveAttribute(
+      "data-dimmed",
       "true",
     );
 
@@ -74,38 +74,95 @@ test.describe("Task graph", () => {
     await refetch;
     await expect(node(testPage, g.a.id)).toHaveAccessibleName(/Completed/);
 
-    await dialog.getByTestId("task-graph-mode-chain").click();
+    await panel.getByTestId("task-graph-mode-chain").click();
     await expect(node(testPage, g.d.id)).toHaveCount(0);
-    await expect(node(testPage, g.c.id)).toBeVisible();
 
+    // Activating a node opens that task and keeps the graph tab, now focused on it.
     await node(testPage, g.c.id).click();
     await expect(testPage).toHaveURL(new RegExp(`/t/${g.c.id}$`));
-    await expect(dialog).toHaveCount(0);
+    await expect(testPage.getByTestId("task-graph-panel")).toBeVisible();
+    await expect(node(testPage, g.c.id).getByTestId("task-graph-node-card")).toHaveAttribute(
+      "data-focused",
+      "true",
+    );
   });
 
-  test("opens from the dependency chip, closes on Escape and follows dark mode", async ({
+  test("an open graph tab is kept in the task's saved layout", async ({
+    testPage,
+    apiClient,
+    seedData,
+  }) => {
+    // Layouts persist per task environment, so the task needs a started session.
+    const parent = await apiClient.createTaskWithAgent(
+      seedData.workspaceId,
+      "Graph layout parent",
+      seedData.agentProfileId,
+      {
+        description: 'e2e:message("ready")',
+        workflow_id: seedData.workflowId,
+        workflow_step_id: seedData.startStepId,
+        repository_ids: [seedData.repositoryId],
+      },
+    );
+    await apiClient.createTask(seedData.workspaceId, "Graph layout child", {
+      workflow_id: seedData.workflowId,
+      workflow_step_id: seedData.startStepId,
+      repository_ids: [seedData.repositoryId],
+      parent_id: parent.id,
+    });
+    await testPage.goto(`/t/${parent.id}?panel=task-graph`);
+    await expect(testPage.getByTestId("task-graph-panel")).toBeVisible();
+    await expect(testPage).not.toHaveURL(/panel=task-graph/);
+    await testPage.evaluate(() =>
+      (window as Window & { __persistDockviewLayout__?: () => void }).__persistDockviewLayout__?.(),
+    );
+    await testPage.reload();
+    await expect(testPage.getByTestId("task-graph-panel")).toBeVisible();
+  });
+
+  test("Show in graph from the sidebar and a Kanban card focuses that task", async ({
     testPage,
     apiClient,
     seedData,
   }) => {
     const g = await seedGraph(apiClient, seedData);
     await testPage.emulateMedia({ colorScheme: "dark" });
-    await testPage.goto(`/t/${g.b.id}`);
+    await testPage.goto(`/t/${g.a.id}`);
+    const session = new SessionPage(testPage);
+    await session.waitForLoad();
 
+    const row = session.sidebar
+      .locator("[data-testid='sidebar-task-item']")
+      .filter({ hasText: g.c.title });
+    await row.click({ button: "right" });
+    await testPage.getByTestId("task-context-show-in-graph").click();
+    await expect(testPage).toHaveURL(new RegExp(`/t/${g.c.id}$`));
+    const panel = testPage.getByTestId("task-graph-panel");
+    await expect(panel).toBeVisible();
+    await expect(panel.locator(".react-flow.dark")).toHaveCount(1);
+    await expect(node(testPage, g.c.id).getByTestId("task-graph-node-card")).toHaveAttribute(
+      "data-focused",
+      "true",
+    );
+
+    const kanban = new KanbanPage(testPage);
+    await kanban.goto(seedData.workflowId);
+    await kanban.taskCard(g.d.id).click({ button: "right" });
+    await testPage.getByTestId("task-context-show-in-graph").click();
+    await expect(testPage).toHaveURL(new RegExp(`/t/${g.d.id}$`));
+    await expect(testPage.getByTestId("task-graph-panel")).toBeVisible();
+    await expect(node(testPage, g.d.id).getByTestId("task-graph-node-card")).toHaveAttribute(
+      "data-focused",
+      "true",
+    );
+  });
+
+  test("the dependency chip opens the graph tab", async ({ testPage, apiClient, seedData }) => {
+    const g = await seedGraph(apiClient, seedData);
+    await testPage.goto(`/t/${g.b.id}`);
     await testPage.getByTestId("task-dependency-chip").first().click();
     await testPage.getByTestId("task-dependency-view-graph").click();
-    const dialog = testPage.getByTestId("task-graph-dialog");
-    await expect(dialog).toBeVisible();
-    await expect(dialog.locator(".react-flow.dark")).toHaveCount(1);
-    await testPage.keyboard.press("Escape");
-    await expect(dialog).toHaveCount(0);
-
-    const button = testPage.getByTestId("task-graph-button").first();
-    await button.click();
-    await expect(dialog).toBeVisible();
-    await testPage.keyboard.press("Escape");
-    await expect(dialog).toHaveCount(0);
-    await expect(button).toBeFocused();
+    await expect(testPage.getByTestId("task-graph-panel")).toBeVisible();
   });
 
   test("hides the entry point for a task without relations", async ({

@@ -2805,5 +2805,7 @@
   "taskGraphZoomIn": "放大",
   "taskGraphZoomOut": "縮小",
   "taskGraphFitView": "適應視圖",
-  "taskGraphCanvas": "任務關係圖畫布"
+  "taskGraphCanvas": "任務關係圖畫布",
+  "panelTaskGraph": "任務關係圖",
+  "taskGraphShowInGraph": "在關係圖中顯示"
 }

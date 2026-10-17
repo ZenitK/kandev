@@ -51,12 +51,13 @@ can see how its related cards are ordered without opening each card.
   edge, no parent, and no non-archived subtask, the system shall not show the
   Task graph control.
 - **AC-TASKS-TASK-RELATIONSHIP-GRAPH-001.3:** The control shall open the graph
-  in a dialog on desktop and in a full-screen sheet on phones.
+  as a Task graph tab in the task workbench on desktop and in a full-screen
+  sheet on phones. (Amended by REQ-TASKS-TASK-RELATIONSHIP-GRAPH-009.)
 - **AC-TASKS-TASK-RELATIONSHIP-GRAPH-001.4:** The dependency chip shall show
   an action that opens the same graph.
-- **AC-TASKS-TASK-RELATIONSHIP-GRAPH-001.5:** The dialog shall close through
-  its close control and the Escape key. Closing shall return focus to the
-  control that opened it.
+- **AC-TASKS-TASK-RELATIONSHIP-GRAPH-001.5:** The phone sheet shall close
+  through its close control and the Escape key. Closing shall return focus to
+  the control that opened it.
 
 ### REQ-TASKS-TASK-RELATIONSHIP-GRAPH-002: Show a parent's subtasks in order
 
@@ -154,7 +155,8 @@ can see how its related cards are ordered without opening each card.
 #### Acceptance criteria
 
 - **AC-TASKS-TASK-RELATIONSHIP-GRAPH-006.1:** Activating a node by click,
-  tap, Enter, or Space shall close the dialog and open that task.
+  tap, Enter, or Space shall open that task. On desktop the Task graph tab stays
+  open and refocuses on the opened task; on phones the sheet closes.
 - **AC-TASKS-TASK-RELATIONSHIP-GRAPH-006.2:** When a pointer hovers a node or
   keyboard focus enters it, the graph shall emphasize the node's transitive
   predecessors, transitive dependents, and their connectors, and de-emphasize
@@ -201,6 +203,31 @@ interaction.
   AC-TASKS-TASK-RELATIONSHIP-GRAPH-006.2 without opening the task.
 - **AC-TASKS-TASK-RELATIONSHIP-GRAPH-008.4:** The phone sheet shall not add
   document-level horizontal overflow.
+
+### REQ-TASKS-TASK-RELATIONSHIP-GRAPH-009: Graph as a workbench tab and task-menu entry
+
+**Intent:** Treat the graph as a main working view rather than a modal, and
+reach it from any task.
+
+**User story:** As a developer, I want to right-click any task and see it in
+the graph, so that I can inspect its place in the order without opening it
+first.
+
+#### Acceptance criteria
+
+- **AC-TASKS-TASK-RELATIONSHIP-GRAPH-009.1:** On desktop, the graph shall open
+  as a Task graph tab in the task workbench's main group, beside Chat. Opening it
+  again shall focus the existing tab rather than add another.
+- **AC-TASKS-TASK-RELATIONSHIP-GRAPH-009.2:** The Task graph tab shall always
+  show the graph of the task currently open in the workbench, with that task
+  focused, and shall follow it when the user switches task.
+- **AC-TASKS-TASK-RELATIONSHIP-GRAPH-009.3:** The task context menu on sidebar
+  rows and Kanban cards shall offer Show in graph for every non-archived task.
+- **AC-TASKS-TASK-RELATIONSHIP-GRAPH-009.4:** Show in graph shall open the
+  chosen task with the graph shown and that task focused: the Task graph tab on
+  desktop, the full-screen sheet on phones.
+- **AC-TASKS-TASK-RELATIONSHIP-GRAPH-009.5:** An open Task graph tab shall be
+  kept when the workbench layout is saved and restored.
 
 ## Out of scope
 

@@ -107,8 +107,11 @@ function GraphCanvas({
 export function TaskGraphContent({
   taskId,
   onNavigate,
+  keepGraphOpen = false,
 }: {
   taskId: string;
+  /** Re-open the graph on the destination task (workbench tab). */
+  keepGraphOpen?: boolean;
   onNavigate: () => void;
 }) {
   const { model, loading, error, setMode, retry } = useTaskGraph(taskId, true);
@@ -116,9 +119,9 @@ export function TaskGraphContent({
   const activate = useCallback(
     (id: string) => {
       onNavigate();
-      router.push(linkToTask(id));
+      router.push(linkToTask(id, keepGraphOpen ? { panel: "task-graph" } : undefined));
     },
-    [onNavigate, router],
+    [onNavigate, router, keepGraphOpen],
   );
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">

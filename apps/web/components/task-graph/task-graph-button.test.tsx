@@ -1,41 +1,33 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const available = vi.hoisted(() => ({ value: true }));
+const openTaskGraph = vi.hoisted(() => vi.fn());
 vi.mock("@/hooks/domains/task/use-task-graph-available", () => ({
   useTaskGraphAvailable: () => available.value,
 }));
-vi.mock("./task-graph-content", () => ({
-  TaskGraphContent: ({ taskId }: { taskId: string }) => (
-    <div data-testid="graph-body">{taskId}</div>
-  ),
+vi.mock("@/hooks/domains/task/use-open-task-graph", () => ({
+  useOpenTaskGraph: () => openTaskGraph,
 }));
 
 import { TaskGraphButton } from "./task-graph-button";
 
-afterEach(cleanup);
-
-function renderButton(taskId: string | null) {
-  return render(<TaskGraphButton taskId={taskId} />);
-}
+afterEach(() => {
+  cleanup();
+  openTaskGraph.mockReset();
+});
 
 describe("TaskGraphButton", () => {
   it("renders nothing without relations", () => {
     available.value = false;
-    renderButton("t1");
+    render(<TaskGraphButton taskId="t1" />);
     expect(screen.queryByTestId("task-graph-button")).toBeNull();
   });
 
-  it("opens the dialog with the lazy body, closes on Escape and restores focus", async () => {
+  it("opens the graph for its task", () => {
     available.value = true;
-    renderButton("t1");
-    const button = screen.getByRole("button", { name: "Task graph" });
-    button.focus();
-    fireEvent.click(button);
-    expect(await screen.findByTestId("graph-body")).toBeTruthy();
-    expect(screen.getByRole("dialog", { name: "Task graph" })).toBeTruthy();
-    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
-    expect(screen.queryByRole("dialog")).toBeNull();
-    await waitFor(() => expect(document.activeElement).toBe(button));
+    render(<TaskGraphButton taskId="t1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Task graph" }));
+    expect(openTaskGraph).toHaveBeenCalledWith("t1");
   });
 });

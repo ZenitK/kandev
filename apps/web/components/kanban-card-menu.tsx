@@ -1,5 +1,6 @@
 "use client";
 
+import { useOpenTaskGraph } from "@/hooks/domains/task/use-open-task-graph";
 import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -197,6 +198,15 @@ function useTaskMenuConfirmations(
   return { handleDetachConfirm, requestDetachConfirmation, requestArchiveConfirmation };
 }
 
+/** Show in graph applies to one card, not a multi-selection. */
+function showGraphHandler(
+  open: (taskId: string) => void,
+  taskId: string,
+  multiSelection: boolean,
+): (() => void) | undefined {
+  return multiSelection ? undefined : () => open(taskId);
+}
+
 export function useKanbanCardMenus({
   task,
   workspaceId,
@@ -223,6 +233,7 @@ export function useKanbanCardMenus({
   const dialogs = useTaskMenuDialogState();
   const { detachTask, detachingTaskId } = useDetachTask();
   const updateTaskPriority = useUpdateTaskPriority();
+  const openTaskGraph = useOpenTaskGraph();
   const prUnlinkMenu = useCardPRUnlinkEntries(task);
   const { handleDetachConfirm, requestDetachConfirmation, requestArchiveConfirmation } =
     useTaskMenuConfirmations(task.id, detachTask, dialogs);
@@ -250,6 +261,7 @@ export function useKanbanCardMenus({
     onArchive: onArchive ? requestArchiveConfirmation : undefined,
     onDelete: onDelete ? () => dialogs.setShowDeleteConfirm(true) : undefined,
     onDetach: task.parentTaskId && !actingOnMultiSelection ? requestDetachConfirmation : undefined,
+    onShowGraph: showGraphHandler(openTaskGraph, task.id, actingOnMultiSelection),
     ...buildLinkDialogHandlers(externalLinkAvailability, dialogs),
     onChangeWorkflow: () => {
       window.setTimeout(() => dialogs.setShowChangeWorkflow(true), 300);

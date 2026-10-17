@@ -36,6 +36,10 @@ describe("task links", () => {
     expect(searchParams.toString()).toBe("layout=old&tag=first&tag=second");
   });
 
+  it("asks the task page to open a panel", () => {
+    expect(linkToTask("task 1", { panel: "task-graph" })).toBe("/t/task%201?panel=task-graph");
+  });
+
   it("keeps /tasks for the task list route", () => {
     expect(linkToTasks()).toBe("/tasks");
     expect(linkToTasks("workspace-123")).toBe("/tasks?workspace=workspace-123");

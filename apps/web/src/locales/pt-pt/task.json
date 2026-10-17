@@ -2805,5 +2805,7 @@
   "taskGraphZoomIn": "Aumentar zoom",
   "taskGraphZoomOut": "Diminuir zoom",
   "taskGraphFitView": "Ajustar à vista",
-  "taskGraphCanvas": "Área do grafo de tarefas"
+  "taskGraphCanvas": "Área do grafo de tarefas",
+  "panelTaskGraph": "Grafo de tarefas",
+  "taskGraphShowInGraph": "Mostrar no grafo"
 }
