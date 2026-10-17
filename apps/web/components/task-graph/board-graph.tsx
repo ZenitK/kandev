@@ -3,10 +3,19 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@kandev/ui/button";
 import { useAppStore } from "@/components/state-provider";
 import { buildBoardGraph, type BoardGraphTask } from "@/lib/task-graph/board";
-import { layoutGroupedTaskGraph } from "@/lib/task-graph/layout";
-import { buildTaskGraphModel } from "@/lib/task-graph/model";
+import {
+  layoutGroupedTaskGraph,
+  layoutTaskGraph,
+  type TaskGraphLayout,
+  type TaskGraphNodeBox,
+} from "@/lib/task-graph/layout";
+import { buildTaskGraphModel, type TaskGraphModel } from "@/lib/task-graph/model";
+import { useTaskGraphParallelSteps } from "@/hooks/domains/task/use-task-graph-parallel-steps";
 import { TaskGraphCanvas } from "./task-graph-canvas";
 import { TaskGraphLegend } from "./task-graph-legend";
+import { TaskGraphParallelToggle } from "./task-graph-parallel-toggle";
+import type { TaskGraphFrame } from "./task-graph-renderer";
+import { useStepFrames } from "./use-step-frames";
 
 const MIN_HEIGHT_PX = 260;
 const MAX_HEIGHT_PX = 720;
@@ -66,6 +75,47 @@ function SelectionBar({
   );
 }
 
+type BoardGraphData = {
+  model: TaskGraphModel;
+  layout: TaskGraphLayout;
+  frames: TaskGraphFrame[];
+  height: number;
+};
+
+function layoutHeight(boxes: TaskGraphNodeBox[]): number {
+  if (boxes.length === 0) return 0;
+  return Math.max(...boxes.map((b) => b.y + b.height)) - Math.min(...boxes.map((b) => b.y));
+}
+
+/** Parent frames by default; with Parallel steps, step columns and step bands. */
+function useBoardGraphData(
+  tasks: BoardGraphTask[],
+  focusId: string | null,
+  parallel: boolean,
+): BoardGraphData {
+  const { t } = useTranslation();
+  const store = useAppStore((state) => state as unknown as TitleLookupState);
+  const grouped = useMemo(() => {
+    const { response, groups } = buildBoardGraph(tasks, focusId, (id) => findTitle(store, id));
+    const model = buildTaskGraphModel(response);
+    if (parallel) return { model, layout: layoutTaskGraph(model), frames: [] as TaskGraphFrame[] };
+    const placed = layoutGroupedTaskGraph(model, groups);
+    const frames = groups.flatMap((group) => {
+      const box = placed.groups.get(group.id);
+      return box
+        ? [{ id: group.id, title: group.title || t("task:taskGraphModeSubtasks"), box }]
+        : [];
+    });
+    return { model, layout: placed.nodes, frames };
+  }, [tasks, focusId, store, t, parallel]);
+  const bands = useStepFrames(grouped.model, grouped.layout, parallel);
+  return useMemo(() => {
+    const frames = parallel ? bands : grouped.frames;
+    const height = layoutHeight([...grouped.layout.values(), ...frames.map((f) => f.box)]);
+    return { ...grouped, frames, height };
+  }, [grouped, bands, parallel]);
+}
+
 export function BoardGraph({
   tasks,
   focusId,
@@ -77,23 +127,8 @@ export function BoardGraph({
   onOpen: (taskId: string) => void;
   onPreview: (taskId: string) => void;
 }) {
-  const { t } = useTranslation();
-  const store = useAppStore((state) => state as unknown as TitleLookupState);
-  const graph = useMemo(() => {
-    const { response, groups } = buildBoardGraph(tasks, focusId, (id) => findTitle(store, id));
-    const model = buildTaskGraphModel(response);
-    const placed = layoutGroupedTaskGraph(model, groups);
-    const frames = groups.flatMap((group) => {
-      const box = placed.groups.get(group.id);
-      return box
-        ? [{ id: group.id, title: group.title || t("task:taskGraphModeSubtasks"), box }]
-        : [];
-    });
-    const boxes = [...placed.nodes.values(), ...placed.groups.values()];
-    const height =
-      Math.max(...boxes.map((b) => b.y + b.height)) - Math.min(...boxes.map((b) => b.y));
-    return { model, layout: placed.nodes, frames, height };
-  }, [tasks, focusId, store, t]);
+  const [parallel, setParallel] = useTaskGraphParallelSteps();
+  const graph = useBoardGraphData(tasks, focusId, parallel);
 
   const [selectedId, setSelectedId] = useState<string | null>(focusId);
   useEffect(() => setSelectedId(focusId), [focusId]);
@@ -107,11 +142,14 @@ export function BoardGraph({
   const height = Math.min(MAX_HEIGHT_PX, Math.max(MIN_HEIGHT_PX, graph.height * 0.75 + CHROME_PX));
   return (
     <div ref={containerRef} data-testid="board-graph" className="flex flex-col gap-2 px-2 pb-2">
-      <SelectionBar
-        title={selected?.title ?? null}
-        onOpen={() => selected && onOpen(selected.id)}
-        onPreview={() => selected && onPreview(selected.id)}
-      />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <SelectionBar
+          title={selected?.title ?? null}
+          onOpen={() => selected && onOpen(selected.id)}
+          onPreview={() => selected && onPreview(selected.id)}
+        />
+        <TaskGraphParallelToggle pressed={parallel} onPressedChange={setParallel} />
+      </div>
       <div className="overflow-hidden rounded-md border" style={{ height }}>
         <TaskGraphCanvas
           model={graph.model}

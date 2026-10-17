@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { IconAlertTriangle, IconInfoCircle } from "@tabler/icons-react";
 import { Button } from "@kandev/ui/button";
@@ -6,9 +6,13 @@ import { Spinner } from "@kandev/ui/spinner";
 import { useTaskGraph } from "@/hooks/domains/task/use-task-graph";
 import { linkToTask } from "@/lib/links";
 import { useRouter } from "@/lib/routing/client-router";
+import { layoutTaskGraph } from "@/lib/task-graph/layout";
 import type { TaskGraphModel } from "@/lib/task-graph/model";
+import { useTaskGraphParallelSteps } from "@/hooks/domains/task/use-task-graph-parallel-steps";
 import { TaskGraphLegend } from "./task-graph-legend";
 import { TaskGraphCanvas } from "./task-graph-canvas";
+import { TaskGraphParallelToggle } from "./task-graph-parallel-toggle";
+import { useStepFrames } from "./use-step-frames";
 import { TaskGraphModeSelector } from "./task-graph-mode-selector";
 
 function Notice({ children }: { children: string }) {
@@ -57,6 +61,21 @@ function StatusArea({ error, onRetry }: { error: boolean; onRetry: () => void })
   );
 }
 
+/** Step-column canvas with optional parallel-step bands. */
+function SteppedCanvas({
+  model,
+  parallel,
+  onActivate,
+}: {
+  model: TaskGraphModel;
+  parallel: boolean;
+  onActivate: (id: string) => void;
+}) {
+  const layout = useMemo(() => layoutTaskGraph(model), [model]);
+  const frames = useStepFrames(model, layout, parallel);
+  return <TaskGraphCanvas model={model} layout={layout} frames={frames} onActivate={onActivate} />;
+}
+
 /** Dialog body: lazy-loaded so the graph libraries stay out of task detail. */
 export function TaskGraphContent({
   taskId,
@@ -69,6 +88,7 @@ export function TaskGraphContent({
   onNavigate: () => void;
 }) {
   const { model, loading, error, setMode, retry } = useTaskGraph(taskId, true);
+  const [parallel, setParallel] = useTaskGraphParallelSteps();
   const router = useRouter();
   const activate = useCallback(
     (id: string) => {
@@ -93,6 +113,7 @@ export function TaskGraphContent({
             onChange={setMode}
           />
         )}
+        {model && <TaskGraphParallelToggle pressed={parallel} onPressedChange={setParallel} />}
       </div>
       {model && <GraphNotices model={model} />}
       <div
@@ -100,7 +121,7 @@ export function TaskGraphContent({
         className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-md border"
       >
         {model ? (
-          <TaskGraphCanvas model={model} onActivate={activate} />
+          <SteppedCanvas model={model} parallel={parallel} onActivate={activate} />
         ) : (
           <StatusArea error={error} onRetry={retry} />
         )}

@@ -2810,5 +2810,9 @@
   "taskGraphShowInGraph": "Show in graph",
   "taskGraphOpenTask": "Open task",
   "taskGraphPreviewTask": "Preview",
-  "taskGraphSelectHint": "Select a task to open it, or double-click it."
+  "taskGraphSelectHint": "Select a task to open it, or double-click it.",
+  "taskGraphParallelSteps": "Parallel steps",
+  "taskGraphStepLabel": "Step {{step}}",
+  "taskGraphStepParallel_one": "Step {{step}} · {{count}} can run in parallel",
+  "taskGraphStepParallel_other": "Step {{step}} · {{count}} can run in parallel"
 }

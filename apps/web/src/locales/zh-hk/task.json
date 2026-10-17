@@ -2810,5 +2810,9 @@
   "taskGraphShowInGraph": "在關係圖中顯示",
   "taskGraphOpenTask": "開啟任務",
   "taskGraphPreviewTask": "預覽",
-  "taskGraphSelectHint": "選擇一個任務以開啟，或雙擊它。"
+  "taskGraphSelectHint": "選擇一個任務以開啟，或雙擊它。",
+  "taskGraphParallelSteps": "並行步驟",
+  "taskGraphStepLabel": "第 {{step}} 步",
+  "taskGraphStepParallel_one": "第 {{step}} 步 · {{count}} 個可並行執行",
+  "taskGraphStepParallel_other": "第 {{step}} 步 · {{count}} 個可並行執行"
 }

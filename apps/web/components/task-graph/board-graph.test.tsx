@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/components/state-provider", () => ({
   useAppStore: (sel: (s: unknown) => unknown) => sel({ kanban: { tasks: [] } }),
@@ -8,10 +8,16 @@ vi.mock("./task-graph-canvas", () => ({
   TaskGraphCanvas: (p: {
     model: { nodes: Array<{ id: string; title: string }> };
     selectedId: string | null;
+    frames?: Array<{ id: string; title: string }>;
     onActivate: (id: string) => void;
     onOpen?: (id: string) => void;
   }) => (
     <div>
+      {(p.frames ?? []).map((f) => (
+        <span key={f.id} data-testid="frame">
+          {f.title}
+        </span>
+      ))}
       {p.model.nodes.map((n) => (
         <button
           key={n.id}
@@ -32,6 +38,7 @@ import { BoardGraph } from "./board-graph";
 beforeAll(() => {
   Element.prototype.scrollIntoView ??= () => {};
 });
+beforeEach(() => window.localStorage.clear());
 afterEach(cleanup);
 
 const tasks = [
@@ -62,5 +69,21 @@ describe("BoardGraph", () => {
     expect(screen.getByRole("button", { name: "Alpha" }).dataset.selected).toBe("true");
     fireEvent.doubleClick(screen.getByRole("button", { name: "Beta" }));
     expect(onOpen).toHaveBeenCalledWith("b");
+  });
+
+  it("swaps parent frames for parallel step bands when toggled", () => {
+    const board = [
+      { id: "p", title: "Parent" },
+      { id: "x", title: "X", parentTaskId: "p" },
+      { id: "y", title: "Y", parentTaskId: "p" },
+      { id: "z", title: "Z", parentTaskId: "p", dependsOn: [{ id: "x" }] },
+    ];
+    render(<BoardGraph tasks={board} focusId={null} onOpen={vi.fn()} onPreview={vi.fn()} />);
+    expect(screen.getAllByTestId("frame").map((f) => f.textContent)).toEqual(["Parent"]);
+    fireEvent.click(screen.getByTestId("task-graph-parallel-toggle"));
+    expect(screen.getAllByTestId("frame").map((f) => f.textContent)).toEqual([
+      "Step 1 · 3 can run in parallel",
+      "Step 2",
+    ]);
   });
 });

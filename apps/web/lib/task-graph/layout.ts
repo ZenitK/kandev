@@ -97,3 +97,34 @@ export function layoutGroupedTaskGraph(
   }
   return { nodes, groups: frames };
 }
+
+export type TaskGraphStepFrame = { step: number; count: number; box: TaskGraphNodeBox };
+
+/**
+ * One band per step column: tasks sharing a step have no displayed ordering
+ * between them, so they can run in parallel. Bands share one top and bottom so
+ * their labels form a row above every card, clear of the connectors.
+ */
+export function stepFrames(model: TaskGraphModel, layout: TaskGraphLayout): TaskGraphStepFrame[] {
+  const byStep = new Map<number, TaskGraphNodeBox[]>();
+  for (const n of model.nodes) {
+    const box = layout.get(n.id);
+    if (!box) continue;
+    byStep.set(n.step, [...(byStep.get(n.step) ?? []), box]);
+  }
+  const all = [...byStep.values()].flat();
+  if (all.length === 0) return [];
+  const top = Math.min(...all.map((b) => b.y)) - FRAME_PADDING - FRAME_LABEL_SPACE;
+  const bottom = Math.max(...all.map((b) => b.y + b.height)) + FRAME_PADDING;
+  return [...byStep.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([step, boxes]) => {
+      const left = Math.min(...boxes.map((b) => b.x)) - FRAME_PADDING;
+      const right = Math.max(...boxes.map((b) => b.x + b.width)) + FRAME_PADDING;
+      return {
+        step,
+        count: boxes.length,
+        box: { x: left, y: top, width: right - left, height: bottom - top },
+      };
+    });
+}

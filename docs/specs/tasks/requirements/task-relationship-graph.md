@@ -250,6 +250,14 @@ first.
   view.
 - **AC-TASKS-TASK-RELATIONSHIP-GRAPH-010.6:** The selected Graph view shall be
   remembered like the other listing views.
+- **AC-TASKS-TASK-RELATIONSHIP-GRAPH-010.7:** Clicking a node shall select it
+  without leaving the view; the selected task shall offer Open task and
+  Preview, and double-clicking a node shall open it.
+- **AC-TASKS-TASK-RELATIONSHIP-GRAPH-010.8:** A Parallel steps toggle on the
+  board Graph view and the task graph shall lay tasks out left to right by step
+  and band each step, labelling how many of its tasks can run in parallel. On
+  the board it replaces the parent frames while on. The choice shall be
+  remembered on the device.
 
 ## Out of scope
 

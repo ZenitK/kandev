@@ -2810,5 +2810,9 @@
   "taskGraphShowInGraph": "그래프에서 보기",
   "taskGraphOpenTask": "작업 열기",
   "taskGraphPreviewTask": "미리 보기",
-  "taskGraphSelectHint": "작업을 선택해 열거나 두 번 클릭하세요."
+  "taskGraphSelectHint": "작업을 선택해 열거나 두 번 클릭하세요.",
+  "taskGraphParallelSteps": "병렬 단계",
+  "taskGraphStepLabel": "{{step}}단계",
+  "taskGraphStepParallel_one": "{{step}}단계 · {{count}}개 병렬 실행 가능",
+  "taskGraphStepParallel_other": "{{step}}단계 · {{count}}개 병렬 실행 가능"
 }

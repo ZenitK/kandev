@@ -175,6 +175,16 @@ test.describe("Task graph", () => {
     await expect(node(testPage, g.a.id)).toBeVisible();
     await expect(node(testPage, g.outside.id)).toBeVisible();
 
+    // Parallel steps: a and d share no ordering, so they band together.
+    await board.getByTestId("task-graph-parallel-toggle").click();
+    await expect(
+      board.getByTestId("task-graph-frame").filter({ hasText: "can run in parallel" }),
+    ).not.toHaveCount(0);
+    await expect(
+      board.getByTestId("task-graph-frame").filter({ hasText: g.parent.title }),
+    ).toHaveCount(0);
+    await board.getByTestId("task-graph-parallel-toggle").click();
+
     // A click selects; Open goes into the selected task.
     await node(testPage, g.b.id).click();
     await expect(board.getByTestId("board-graph-selection")).toContainText(g.b.title);

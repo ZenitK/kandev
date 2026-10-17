@@ -370,6 +370,16 @@ Node activation calls the board's `onPreviewTask`. The shared `TaskGraphCanvas`
 supplies theme, touch, emphasis and accessible names to both this view and the
 task graph.
 
+A node click only selects (`TaskGraphRendererProps.selectedId`); the selection
+bar offers Open task (`onOpenTask`) and Preview (`onPreviewTask`), and
+`onNodeOpen` (double-click) opens directly.
+
+The Parallel steps toggle (`useTaskGraphParallelSteps`, device-local
+`kandev.taskGraph.parallelSteps.v1`) switches the board to the step-column
+`layoutTaskGraph` and draws `stepFrames` bands in place of parent frames; the
+task graph keeps its step layout and adds the bands. Bands share one top and
+bottom so their labels form a header row above the cards, clear of connectors.
+
 `linkToTaskOverview({ graphFocusTaskId })` adds `?graphFocus=`; the lane that
 contains the task marks it focused, centres it, and scrolls into view.
 `useOpenTaskGraph().showInGraph` stores the Graph view and navigates there; the

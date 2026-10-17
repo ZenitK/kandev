@@ -2810,5 +2810,9 @@
   "taskGraphShowInGraph": "Śĥōŵ ĩń ĝŕàƥĥ",
   "taskGraphOpenTask": "Ōƥēń ţàśķ",
   "taskGraphPreviewTask": "Ƥŕēvĩēŵ",
-  "taskGraphSelectHint": "Śēĺēćţ à ţàśķ ţō ōƥēń ĩţ, ōŕ ďōũƀĺē-ćĺĩćķ ĩţ."
+  "taskGraphSelectHint": "Śēĺēćţ à ţàśķ ţō ōƥēń ĩţ, ōŕ ďōũƀĺē-ćĺĩćķ ĩţ.",
+  "taskGraphParallelSteps": "Ƥàŕàĺĺēĺ śţēƥś",
+  "taskGraphStepLabel": "Śţēƥ {{step}}",
+  "taskGraphStepParallel_one": "Śţēƥ {{step}} · {{count}} ćàń ŕũń ĩń ƥàŕàĺĺēĺ",
+  "taskGraphStepParallel_other": "Śţēƥ {{step}} · {{count}} ćàń ŕũń ĩń ƥàŕàĺĺēĺ"
 }

@@ -2810,5 +2810,9 @@
   "taskGraphShowInGraph": "Mostrar no grafo",
   "taskGraphOpenTask": "Abrir tarefa",
   "taskGraphPreviewTask": "Pré-visualizar",
-  "taskGraphSelectHint": "Selecione uma tarefa para a abrir, ou faça duplo clique."
+  "taskGraphSelectHint": "Selecione uma tarefa para a abrir, ou faça duplo clique.",
+  "taskGraphParallelSteps": "Passos paralelos",
+  "taskGraphStepLabel": "Passo {{step}}",
+  "taskGraphStepParallel_one": "Passo {{step}} · {{count}} pode ser executada em paralelo",
+  "taskGraphStepParallel_other": "Passo {{step}} · {{count}} podem ser executadas em paralelo"
 }

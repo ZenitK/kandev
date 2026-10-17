@@ -17,6 +17,8 @@ acceptance_criteria:
   - AC-TASKS-TASK-RELATIONSHIP-GRAPH-010.4
   - AC-TASKS-TASK-RELATIONSHIP-GRAPH-010.5
   - AC-TASKS-TASK-RELATIONSHIP-GRAPH-010.6
+  - AC-TASKS-TASK-RELATIONSHIP-GRAPH-010.7
+  - AC-TASKS-TASK-RELATIONSHIP-GRAPH-010.8
 system_design:
   - ../../specs/tasks/system-design/task-relationship-graph.md
 ---
@@ -60,3 +62,6 @@ cd apps/web && pnpm e2e:run --docker --project mobile-chrome -- tests/task/mobil
 Implemented as specified. Verified with the copied prod harman workspace on the
 LAN instance (25 tasks, 45 edges, one parent frame). Desktop E2E: 21 passed,
 including the existing Pipeline and view-preference specs; mobile E2E: 3 passed.
+Follow-ups in the same work order: select-then-open on the board (selection bar,
+double-click) and the Parallel steps toggle with aligned step bands; graph E2E
+6 passed, mobile 1 passed.

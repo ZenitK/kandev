@@ -6,6 +6,7 @@ import {
   TASK_GRAPH_NODE_WIDTH,
   layoutGroupedTaskGraph,
   layoutTaskGraph,
+  stepFrames,
 } from "./layout";
 
 function model(ids: string[], edges: Array<[string, string]>) {
@@ -86,5 +87,35 @@ describe("layoutGroupedTaskGraph", () => {
         box.y + box.height <= frame!.y + frame!.height;
       expect(inside).toBe(false);
     }
+  });
+});
+
+describe("stepFrames", () => {
+  it("bands each step column and counts the tasks that can run in parallel", () => {
+    // a → c, b → c: a and b share step 1.
+    const m = model(
+      ["a", "b", "c"],
+      [
+        ["a", "c"],
+        ["b", "c"],
+      ],
+    );
+    const layout = layoutTaskGraph(m);
+    const frames = stepFrames(m, layout);
+    expect(frames.map((f) => [f.step, f.count])).toEqual([
+      [1, 2],
+      [2, 1],
+    ]);
+    const one = frames[0].box;
+    for (const id of ["a", "b"]) {
+      const box = layout.get(id)!;
+      expect(box.x).toBeGreaterThanOrEqual(one.x);
+      expect(box.y).toBeGreaterThanOrEqual(one.y);
+      expect(box.x + box.width).toBeLessThanOrEqual(one.x + one.width);
+    }
+    expect(frames[1].box.x).toBeGreaterThan(one.x + one.width - 1);
+    // Shared top and bottom: labels line up above every card.
+    expect(frames[1].box.y).toBe(one.y);
+    expect(frames[1].box.height).toBe(one.height);
   });
 });

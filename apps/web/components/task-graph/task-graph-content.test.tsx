@@ -15,7 +15,10 @@ vi.mock("./xyflow-task-graph-renderer", () => ({
   XyflowTaskGraphRenderer: (props: TaskGraphRendererProps) => {
     rendered.props = props;
     return (
-      <div data-testid="stub-renderer">
+      <div
+        data-testid="stub-renderer"
+        data-frames={(props.frames ?? []).map((f) => f.title).join("|")}
+      >
         {props.model.nodes.map((n) => (
           <button key={n.id} type="button" onClick={() => props.onNodeActivate(n.id)}>
             {props.nodeLabel(n)}
@@ -151,5 +154,13 @@ describe("TaskGraphContent", () => {
     expect(rendered.props?.emphasis).toBeNull();
     act(() => rendered.props?.onNodeEmphasize("b"));
     expect([...(rendered.props?.emphasis?.nodeIds ?? [])].sort()).toEqual(["a", "b"]);
+  });
+
+  it("bands parallel steps when the toggle is on", () => {
+    window.localStorage.clear();
+    render(<TaskGraphContent taskId="p" onNavigate={vi.fn()} />);
+    expect(screen.getByTestId("stub-renderer").dataset.frames).toBe("");
+    fireEvent.click(screen.getByTestId("task-graph-parallel-toggle"));
+    expect(screen.getByTestId("stub-renderer").dataset.frames).toBe("Step 1|Step 2");
   });
 });
