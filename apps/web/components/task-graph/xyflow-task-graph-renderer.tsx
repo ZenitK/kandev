@@ -210,7 +210,12 @@ export function XyflowTaskGraphRenderer(props: TaskGraphRendererProps) {
   const ariaLabelConfig = useAriaLabels();
   const nodes = useMemo(() => [...toFrameNodes(props), ...toFlowNodes(props)] as Node[], [props]);
   const edges = useMemo(() => toFlowEdges(props), [props]);
-  const nodeKey = props.model.nodes.map((n) => n.id).join(",");
+  // Frames are part of the key: switching parent frames for step bands re-lays
+  // out the cards, so the view must re-fit.
+  const nodeKey = [
+    ...props.model.nodes.map((n) => n.id),
+    ...(props.frames ?? []).map((f) => f.id),
+  ].join(",");
   return (
     <ReactFlowProvider>
       <ReactFlow

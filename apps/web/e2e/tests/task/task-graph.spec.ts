@@ -180,6 +180,8 @@ test.describe("Task graph", () => {
     await expect(
       board.getByTestId("task-graph-frame").filter({ hasText: "can run in parallel" }),
     ).not.toHaveCount(0);
+    // The re-laid-out cards are re-fitted into view.
+    await expect(node(testPage, g.a.id)).toBeInViewport();
     await expect(
       board.getByTestId("task-graph-frame").filter({ hasText: g.parent.title }),
     ).toHaveCount(0);
