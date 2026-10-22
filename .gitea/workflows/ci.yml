@@ -38,6 +38,10 @@ jobs:
         run: make fmt
 
       - name: Typecheck
+        env:
+          # The complete TypeScript graph exceeds Node's default 4 GiB heap —
+          # see .github/workflows/frontend-tests.yml.
+          NODE_OPTIONS: --max-old-space-size=8192
         run: make typecheck
 
       - name: Test
