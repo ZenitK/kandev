@@ -1,0 +1,46 @@
+name: CI
+
+# Self-hosted CI for the private zenit/kandev mirror, separate from the
+# upstream kdlbs/kandev GitHub Actions pipeline (.github/workflows/). Runs
+# on the single persistent runner registered on dev-01 (label: kandev-ci) —
+# see proxmox_home_server/infra/proxmox/kandev-ci/ and
+# scripts/deploy-kandev-ci.sh for how that runner is provisioned.
+on:
+  push:
+
+jobs:
+  ci:
+    runs-on: kandev-ci
+    # Same image/options the upstream backend and e2e jobs use — see
+    # .github/workflows/backend-tests.yml and e2e-tests.yml. build-latest
+    # bundles Go, golangci-lint, Node, pnpm, and the Playwright base.
+    # --ipc=host avoids Chromium tab crashes from the default ~64MiB /dev/shm.
+    container:
+      image: ghcr.io/kdlbs/kandev-ci:build-latest
+      options: --ipc=host
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - name: Mark workspace safe for git
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Format check
+        run: make fmt
+
+      - name: Typecheck
+        run: make typecheck
+
+      - name: Test
+        run: make test
+
+      - name: Lint
+        run: make lint
+
+      - name: E2E (Playwright)
+        run: make test-e2e
