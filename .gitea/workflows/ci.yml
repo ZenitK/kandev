@@ -34,6 +34,14 @@ jobs:
         working-directory: apps
         run: pnpm install --frozen-lockfile
 
+      # apps/web/package.json wires these as pretypecheck/pretest hooks, but
+      # `make typecheck`/`make test` call `pnpm exec`/filtered pnpm commands
+      # directly, which skip npm lifecycle hooks. Generate once up front
+      # instead of duplicating this in both targets.
+      - name: Generate changelog/release notes
+        working-directory: apps/web
+        run: node scripts/generate-release-notes.mjs && node scripts/generate-changelog.mjs
+
       - name: Format check
         run: make fmt
 
