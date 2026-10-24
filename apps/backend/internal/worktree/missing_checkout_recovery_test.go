@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -258,9 +259,14 @@ func TestMissingCheckoutRecoveryAllowsTransferredEnvironmentOwner(t *testing.T) 
 
 // @covers AC-TASKS-WORKTREE-METADATA-RECOVERY-004.5
 func TestMissingCheckoutRecoveryResumesInterruptedOperation(t *testing.T) {
+	// TEMP diagnostics for a self-hosted CI hang — see newTestStore in
+	// store_test.go. Remove once the self-hosted run is reliably green.
 	for _, phase := range []string{"before_git_add", "after_git_add"} {
 		t.Run(phase, func(t *testing.T) {
+			diagStart := time.Now()
+			fmt.Fprintf(os.Stderr, "[diag] %s: phase start\n", t.Name())
 			fixture := newMissingCheckoutFixture(t)
+			fmt.Fprintf(os.Stderr, "[diag] %s: fixture built in %s\n", t.Name(), time.Since(diagStart))
 			fixture.removeCheckout(t, false)
 			operationID := "123e4567-e89b-12d3-a456-426614174001"
 			fixture.writePendingOperationRecord(t, operationID)
@@ -275,7 +281,10 @@ func TestMissingCheckoutRecoveryResumesInterruptedOperation(t *testing.T) {
 				runGit(t, fixture.repositoryPath, "worktree", "add", fixture.worktreePath, fixture.branch)
 			}
 
+			admitStart := time.Now()
+			fmt.Fprintf(os.Stderr, "[diag] %s: calling AdmitRecovery\n", t.Name())
 			admission, err := fixture.manager.AdmitRecovery(context.Background(), fixture.request)
+			fmt.Fprintf(os.Stderr, "[diag] %s: AdmitRecovery returned in %s (err=%v)\n", t.Name(), time.Since(admitStart), err)
 			if err != nil {
 				t.Fatalf("resume missing-checkout operation: %v", err)
 			}

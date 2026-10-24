@@ -3,6 +3,8 @@ package worktree
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"testing"
@@ -20,22 +22,34 @@ import (
 // newTestStore opens a SQLite DB with the task repository schema (which owns
 // the task_environment_repos tables the store reads and writes) and
 // constructs a *SQLiteStore on it.
+//
+// TEMP: diagnosing a hang on self-hosted CI where this helper's schema init
+// blocked past Go's 10-minute test timeout. fmt.Fprintf to stderr (not
+// t.Logf) is deliberate — it's unbuffered and shows up even if the test
+// never completes. Remove once the self-hosted CI run is reliably green.
 func newTestStore(t *testing.T) *SQLiteStore {
 	t.Helper()
+	start := time.Now()
+	fmt.Fprintf(os.Stderr, "[diag] %s: newTestStore: opening sqlite\n", t.Name())
 	dbConn, err := dbutil.OpenSQLite(filepath.Join(t.TempDir(), "store.db"))
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
+	fmt.Fprintf(os.Stderr, "[diag] %s: newTestStore: opened sqlite in %s\n", t.Name(), time.Since(start))
 	db := sqlx.NewDb(dbConn, "sqlite3")
 	t.Cleanup(func() { _ = db.Close() })
 
+	schemaStart := time.Now()
+	fmt.Fprintf(os.Stderr, "[diag] %s: newTestStore: initializing task schema\n", t.Name())
 	if _, err := tasksqlite.NewWithDB(db, db, nil); err != nil {
 		t.Fatalf("init task schema: %v", err)
 	}
+	fmt.Fprintf(os.Stderr, "[diag] %s: newTestStore: task schema initialized in %s\n", t.Name(), time.Since(schemaStart))
 	store, err := NewSQLiteStore(db, db)
 	if err != nil {
 		t.Fatalf("new store: %v", err)
 	}
+	fmt.Fprintf(os.Stderr, "[diag] %s: newTestStore: done in %s\n", t.Name(), time.Since(start))
 	return store
 }
 
