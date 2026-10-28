@@ -22,6 +22,7 @@ func (r *Repository) initSchemaContext(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	defer r.relaxSynchronousForInit(ctx)()
 	steps := []func() error{
 		r.initDesktopDiscoverySchema,
 		r.initCoreSchema,
@@ -92,6 +93,29 @@ func (r *Repository) initSchemaContext(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// relaxSynchronousForInit drops the writer connection's synchronous mode to
+// NORMAL for the duration of schema/migration setup, then returns a closure
+// that restores FULL. initSchemaContext runs several hundred unbatched
+// CREATE/ALTER statements, each auto-committing under WAL; at the DSN's
+// default synchronous=FULL (apps/backend/internal/db/sqlite.go), every one of
+// those commits does its own fsync, turning one-time startup into hundreds of
+// synchronous fsyncs — seconds of wall time on storage with higher fsync
+// latency. Every statement here is idempotent (CREATE TABLE/INDEX IF NOT
+// EXISTS, etc.), so a crash mid-init just replays safely on the next start;
+// steady-state writes after this function returns still get FULL durability.
+func (r *Repository) relaxSynchronousForInit(ctx context.Context) func() {
+	noop := func() {}
+	if r.db == nil || r.db.DriverName() != "sqlite3" {
+		return noop
+	}
+	if _, err := r.db.ExecContext(ctx, "PRAGMA synchronous = NORMAL"); err != nil {
+		return noop
+	}
+	return func() {
+		_, _ = r.db.ExecContext(context.Background(), "PRAGMA synchronous = FULL")
+	}
 }
 
 func (r *Repository) ensureTaskEnvironmentRecoveryArtifactsSchema() error {
