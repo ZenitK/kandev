@@ -65,6 +65,7 @@ const (
 var taskScanColumns = []taskScanColumn{
 	{name: "id"},
 	{name: "workspace_id"},
+	{name: "initial_workspace_layout"},
 	{name: "workflow_id"},
 	{name: "workflow_step_id"},
 	{name: "workflow_agent_overrides"},
@@ -434,9 +435,9 @@ func (r *Repository) insertTaskTx(ctx context.Context, tx *sql.Tx, task *models.
 		workflowAgentOverridesValue = workflowAgentOverrides
 	}
 	_, err = tx.ExecContext(ctx, r.db.Rebind(`
-		INSERT INTO tasks (executor_actor_user_id, id, workspace_id, workflow_id, workflow_step_id, workflow_agent_overrides, title, description, state, priority, position, wip_admitted, queued_for_step_id, queued_at, metadata, is_ephemeral, parent_id, autopilot_enabled, created_at, updated_at, origin, project_id, labels, identifier, external_id, assignee_user_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`), workflowCreator(ctx), task.ID, task.WorkspaceID, task.WorkflowID, task.WorkflowStepID, workflowAgentOverridesValue, task.Title, task.Description, task.State, task.Priority, task.Position, dialect.BoolToInt(task.WIPAdmitted), task.QueuedForStepID, task.QueuedAt, string(metadata), dialect.BoolToInt(task.IsEphemeral), task.ParentID, dialect.BoolToInt(task.Autopilot), task.CreatedAt, task.UpdatedAt, task.Origin, task.ProjectID, task.Labels, task.Identifier, externalID, task.AssigneeUserID)
+		INSERT INTO tasks (executor_actor_user_id, id, workspace_id, initial_workspace_layout, workflow_id, workflow_step_id, workflow_agent_overrides, title, description, state, priority, position, wip_admitted, queued_for_step_id, queued_at, metadata, is_ephemeral, parent_id, autopilot_enabled, created_at, updated_at, origin, project_id, labels, identifier, external_id, assignee_user_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`), workflowCreator(ctx), task.ID, task.WorkspaceID, task.InitialWorkspaceLayout, task.WorkflowID, task.WorkflowStepID, workflowAgentOverridesValue, task.Title, task.Description, task.State, task.Priority, task.Position, dialect.BoolToInt(task.WIPAdmitted), task.QueuedForStepID, task.QueuedAt, string(metadata), dialect.BoolToInt(task.IsEphemeral), task.ParentID, dialect.BoolToInt(task.Autopilot), task.CreatedAt, task.UpdatedAt, task.Origin, task.ProjectID, task.Labels, task.Identifier, externalID, task.AssigneeUserID)
 	if err != nil {
 		if isExternalIDUniqueViolation(err) {
 			return "", fmt.Errorf("%w: %w", ErrExternalIDConflict, err)
@@ -471,6 +472,9 @@ func (r *Repository) insertTaskTx(ctx context.Context, tx *sql.Tx, task *models.
 			`UPDATE tasks SET assignment_generation = 1 WHERE id = ?`), task.ID); err != nil {
 			return "", err
 		}
+	}
+	if err := r.claimCreationAttachmentsTx(ctx, tx, task); err != nil {
+		return "", err
 	}
 	return entryID, nil
 }
@@ -1849,7 +1853,8 @@ func (r *Repository) deleteDeferredMoveGuardTx(
 // metadata keys) to land in between. Writing that stale snapshot would
 // silently clobber the concurrent edit. Only the fields this operation owns
 // (workflow id, the deferred-moves metadata sub-map) are carried forward
-// from the caller's request; everything else comes from the fresh row.
+// from the caller's request. Completion guards also preserve their owned handoff
+// carry update or removal; everything else comes from the fresh row.
 //
 // The unconditional (expectedStepID == "") callers — manual/bulk/feeder
 // moves — must NOT call this: their caller-built `task` already carries
@@ -1884,6 +1889,9 @@ func (r *Repository) rebaseTaskForStepAdmissionCAS(
 	if currentStepID != expectedStepID {
 		return false, nil
 	}
+	if matches, err := r.taskStepTransitionGuardMatches(ctx, tx, task.ID, expectedStepID); !matches {
+		return false, err
+	}
 	currentTask, err := r.scanSingleTask(tx.QueryRowContext(ctx, r.db.Rebind(
 		`SELECT `+taskSelectColumns("t")+` FROM tasks t WHERE t.id = ?`), task.ID))
 	if err != nil {
@@ -1892,6 +1900,7 @@ func (r *Repository) rebaseTaskForStepAdmissionCAS(
 	if requestedWorkflowID == "" {
 		requestedWorkflowID = currentTask.WorkflowID
 	}
+	rebaseCompletionHandoff(ctx, task, currentTask, expectedStepID)
 	*task = *currentTask
 	if requestedWorkflowID != "" {
 		task.WorkflowID = requestedWorkflowID
@@ -1913,6 +1922,19 @@ func (r *Repository) rebaseTaskForStepAdmissionCAS(
 	}
 	task.UpdatedAt = now
 	return true, nil
+}
+
+// The task row lock remains held while checking its immutable arrival identity.
+func (r *Repository) taskStepTransitionGuardMatches(ctx context.Context, tx *sql.Tx, taskID, stepID string) (bool, error) {
+	expected, guarded := models.WorkflowStepTransitionGuardFromContext(ctx, taskID, stepID)
+	if !guarded {
+		return true, nil
+	}
+	latest, err := r.getLatestTaskStepTransitionIDTx(ctx, tx, taskID)
+	if err != nil {
+		return false, fmt.Errorf("read task arrival for admission CAS check: %w", err)
+	}
+	return latest == expected, nil
 }
 
 // Inner descriptor keys for the one-shot MetaKeyWorkflowMovePending marker.
@@ -4343,6 +4365,17 @@ func (r *Repository) ListEphemeralTasksAllWorkspaces(ctx context.Context) ([]*mo
 // used by the sidebar archive view. onlyArchived takes precedence over
 // includeArchived when both are true.
 func (r *Repository) ListTasksByWorkspaceWithArchiveMode(ctx context.Context, workspaceID, workflowID, repositoryID, query string, page, pageSize int, sort string, includeArchived, includeEphemeral, onlyEphemeral, excludeConfig, onlyArchived bool) ([]*models.Task, int, error) {
+	return r.listTasksByWorkspace(ctx, workspaceID, workflowID, repositoryID, query, page, pageSize, sort, includeArchived, includeEphemeral, onlyEphemeral, excludeConfig, onlyArchived, false)
+}
+
+func (r *Repository) ListTasksByWorkspaceForCommandPanel(ctx context.Context, workspaceID, workflowID, repositoryID, query string, page, pageSize int, sort string, includeArchived, includeEphemeral, onlyEphemeral, excludeConfig, onlyArchived bool) ([]*models.Task, int, error) {
+	if workflowID == "" || query != "" {
+		return nil, 0, fmt.Errorf("command panel listing requires a workflow and empty query")
+	}
+	return r.listTasksByWorkspace(ctx, workspaceID, workflowID, repositoryID, query, page, pageSize, sort, includeArchived, includeEphemeral, onlyEphemeral, excludeConfig, onlyArchived, true)
+}
+
+func (r *Repository) listTasksByWorkspace(ctx context.Context, workspaceID, workflowID, repositoryID, query string, page, pageSize int, sort string, includeArchived, includeEphemeral, onlyEphemeral, excludeConfig, onlyArchived, commandPanelVisible bool) ([]*models.Task, int, error) {
 	ctx, span := tracing.Tracer("kandev-db").Start(ctx, "db.ListTasksByWorkspace")
 	defer span.End()
 	// Calculate offset
@@ -4350,7 +4383,7 @@ func (r *Repository) ListTasksByWorkspaceWithArchiveMode(ctx context.Context, wo
 	if offset < 0 {
 		offset = 0
 	}
-	sort = usermodels.NormalizeTasksListSort(sort)
+	sort = usermodels.TasksListApiSort(sort)
 
 	// Build filter conditions
 	filter := ""
@@ -4382,7 +4415,7 @@ func (r *Repository) ListTasksByWorkspaceWithArchiveMode(ctx context.Context, wo
 	var err error
 
 	if query == "" {
-		rows, total, err = r.queryAllTasks(ctx, workspaceID, filter, workflowID, repositoryID, pageSize, offset, sort)
+		rows, total, err = r.queryAllTasks(ctx, workspaceID, filter, workflowID, repositoryID, pageSize, offset, sort, commandPanelVisible)
 	} else {
 		rows, total, err = r.searchTasks(ctx, workspaceID, query, filter, workflowID, repositoryID, pageSize, offset, sort)
 	}
@@ -4417,7 +4450,7 @@ func (r *Repository) ListTasksForDeletion(
 	if pageSize <= 0 {
 		pageSize = 1
 	}
-	rows, total, err := r.queryAllTasks(ctx, workspaceID, "", workflowID, "", pageSize, offset, "")
+	rows, total, err := r.queryAllTasks(ctx, workspaceID, "", workflowID, "", pageSize, offset, "", false)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -4496,7 +4529,7 @@ func (r *Repository) RestoreTaskParentIfUnchanged(
 }
 
 // queryAllTasks fetches all tasks (no search) for a workspace with pagination.
-func (r *Repository) queryAllTasks(ctx context.Context, workspaceID, taskFilter, workflowID, repositoryID string, pageSize, offset int, sort string) (*sql.Rows, int, error) {
+func (r *Repository) queryAllTasks(ctx context.Context, workspaceID, taskFilter, workflowID, repositoryID string, pageSize, offset int, sort string, commandPanelVisible bool) (*sql.Rows, int, error) {
 	args := []interface{}{workspaceID}
 	if workflowID != "" {
 		taskFilter += " AND workflow_id = ?"
@@ -4507,17 +4540,26 @@ func (r *Repository) queryAllTasks(ctx context.Context, workspaceID, taskFilter,
 		args = append(args, repositoryID)
 	}
 	var total int
-	if err := r.ro.QueryRowContext(ctx, r.ro.Rebind(`SELECT COUNT(*) FROM tasks WHERE workspace_id = ?`+taskFilter), args...).Scan(&total); err != nil {
+	countFilter, selectFilter := taskFilter, rewriteFilterForAlias(taskFilter, "t")
+	if commandPanelVisible {
+		countFilter += commandPanelStepPredicate("tasks")
+		selectFilter += commandPanelStepPredicate("t")
+	}
+	if err := r.ro.QueryRowContext(ctx, r.ro.Rebind(`SELECT COUNT(*) FROM tasks WHERE workspace_id = ?`+countFilter), args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 	rows, err := r.ro.QueryContext(ctx, r.ro.Rebind(`
 		SELECT `+taskSelectColumns("t")+`
 		FROM tasks t
-		WHERE t.workspace_id = ?`+rewriteFilterForAlias(taskFilter, "t")+`
+		WHERE t.workspace_id = ?`+selectFilter+`
 		ORDER BY `+taskListOrderBy(r.ro.DriverName(), "t", sort)+`
 		LIMIT ? OFFSET ?
 	`), append(append([]interface{}{}, args...), pageSize, offset)...)
 	return rows, total, err
+}
+
+func commandPanelStepPredicate(alias string) string {
+	return ` AND EXISTS (SELECT 1 FROM workflow_steps panel_step WHERE panel_step.id = ` + alias + `.workflow_step_id AND panel_step.workflow_id = ` + alias + `.workflow_id AND panel_step.show_in_command_panel = 1)`
 }
 
 func taskListOrderBy(driver, alias, sort string) string {
@@ -4690,7 +4732,7 @@ func (r *Repository) scanSingleTask(row *sql.Row) (*models.Task, error) {
 	var externalID sql.NullString
 	var externalIDSettledAt sql.NullTime
 	err := row.Scan(
-		&task.ID, &task.WorkspaceID, &task.WorkflowID, &task.WorkflowStepID, &workflowAgentOverrides,
+		&task.ID, &task.WorkspaceID, &task.InitialWorkspaceLayout, &task.WorkflowID, &task.WorkflowStepID, &workflowAgentOverrides,
 		&task.Title, &task.Description, &task.State, &task.Priority, &task.Position,
 		&task.WIPAdmitted, &task.QueuedForStepID, &queuedAt,
 		&metadata, &task.IsEphemeral, &task.ParentID, &task.Autopilot, &archivedAt, &task.ArchivedByCascadeID,
@@ -4743,7 +4785,7 @@ func (r *Repository) scanTaskRows(rows *sql.Rows, includeEntryIdentity bool) ([]
 		var externalID sql.NullString
 		var externalIDSettledAt sql.NullTime
 		destinations := []interface{}{
-			&task.ID, &task.WorkspaceID, &task.WorkflowID, &task.WorkflowStepID, &workflowAgentOverrides,
+			&task.ID, &task.WorkspaceID, &task.InitialWorkspaceLayout, &task.WorkflowID, &task.WorkflowStepID, &workflowAgentOverrides,
 			&task.Title, &task.Description, &task.State, &task.Priority, &task.Position,
 			&task.WIPAdmitted, &task.QueuedForStepID, &queuedAt,
 			&metadata, &task.IsEphemeral, &task.ParentID, &task.Autopilot, &archivedAt, &task.ArchivedByCascadeID,

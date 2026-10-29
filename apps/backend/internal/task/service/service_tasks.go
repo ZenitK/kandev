@@ -13,7 +13,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kandev/kandev/internal/task/retention"
+
 	"github.com/google/uuid"
+	"github.com/kandev/kandev/internal/agent/mcpconfig"
 	runtimeapi "github.com/kandev/kandev/internal/agent/runtime"
 	"github.com/kandev/kandev/internal/agentruntime"
 	"github.com/kandev/kandev/internal/task/archivecascade"
@@ -124,10 +127,14 @@ type taskStopTarget struct {
 }
 
 type taskEnvironmentCleanup struct {
-	env                    *models.TaskEnvironment
-	deleteRow              bool
-	preserveBranches       bool
-	discardWorktreeChanges bool
+	deferEnvironment                bool
+	retentionInventoryCaptured      bool
+	allowUnverifiedWorkspaceChanges bool
+	workspaceCleanup                models.WorkspaceCleanupMode
+	env                             *models.TaskEnvironment
+	deleteRow                       bool
+	preserveBranches                bool
+	discardWorktreeChanges          bool
 	// agentHistory is set only for Quick Chat deletion.
 	agentHistory []agentHistoryTarget
 }
@@ -274,19 +281,30 @@ func (s *Service) CreateTask(ctx context.Context, req *CreateTaskRequest) (Creat
 
 	prepared, err := s.prepareTaskForCreation(ctx, req, externalID)
 	if err != nil {
-		if found, ok := s.recoverFoundTaskAfterInsertFailure(ctx, req.WorkspaceID, externalID); ok {
+		if found, ok, lookupErr := s.recoverFoundTaskAfterInsertFailure(ctx, req.WorkspaceID, externalID); ok {
 			return found, nil
+		} else if lookupErr != nil {
+			return CreateTaskResult{}, errors.Join(err, fmt.Errorf("recheck task identity after prepare failure: %w", lookupErr))
 		}
-		return CreateTaskResult{}, err
+		return CreateTaskResult{}, newPreAllocationTaskCreateError(err)
 	}
 
 	ctx = taskrepo.WithTaskCreationParentValidator(ctx, hierarchy.ValidateCreationParent)
-	if err := s.createTaskWithCapacity(ctx, prepared.task); err != nil {
-		if found, ok := s.recoverFoundTaskAfterInsertFailure(ctx, req.WorkspaceID, externalID); ok {
+	insertTask := func() error { return s.createTaskWithCapacity(ctx, prepared.task) }
+	var createErr error
+	if prepared.task.CreationAttachmentClaim != nil && s.attachmentSvc != nil {
+		createErr = s.attachmentSvc.withClaimAdmission(insertTask)
+	} else {
+		createErr = insertTask()
+	}
+	if createErr != nil {
+		if found, ok, lookupErr := s.recoverFoundTaskAfterInsertFailure(ctx, req.WorkspaceID, externalID); ok {
 			return found, nil
+		} else if lookupErr != nil {
+			return CreateTaskResult{}, errors.Join(createErr, fmt.Errorf("recheck task identity after insert failure: %w", lookupErr))
 		}
-		s.logger.Error("failed to create task", zap.Error(err))
-		return CreateTaskResult{}, err
+		s.logger.Error("failed to create task", zap.Error(createErr))
+		return CreateTaskResult{}, createErr
 	}
 
 	return s.finalizeCreatedTask(ctx, prepared, req)
@@ -342,6 +360,19 @@ func (s *Service) prepareTaskForCreation(ctx context.Context, req *CreateTaskReq
 	if err := s.prepareProjectRepositorySources(ctx, req); err != nil {
 		return nil, err
 	}
+	executorType := ""
+	if strings.TrimSpace(req.InitialWorkspaceLayout) == WorkspaceLayoutTaskRoot || len(req.Repositories) > 1 {
+		resolvedExecutorType, resolveErr := s.resolveInitialWorkspaceExecutorType(ctx, req)
+		if resolveErr != nil {
+			return nil, resolveErr
+		}
+		executorType = resolvedExecutorType
+	}
+	initialWorkspaceLayout, err := NormalizeInitialWorkspaceLayout(req.InitialWorkspaceLayout, len(req.Repositories), executorType)
+	if err != nil {
+		return nil, err
+	}
+	req.InitialWorkspaceLayout = initialWorkspaceLayout
 	if err := s.preflightRepositorySelections(ctx, req); err != nil {
 		return nil, err
 	}
@@ -398,6 +429,11 @@ func (s *Service) prepareTaskForCreation(ctx context.Context, req *CreateTaskReq
 			return nil, err
 		}
 	}
+	claim, err := s.prepareCreationAttachmentClaim(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	task.CreationAttachmentClaim = claim
 
 	return s.resolveTaskCreationReferences(ctx, req, task)
 }
@@ -500,6 +536,11 @@ func (s *Service) finalizeCreatedTask(ctx context.Context, prepared *preparedTas
 		}
 		if err := s.workspacePolicyAttacher.AttachWorkspacePolicy(ctx, task.ID, req.ParentID, *req.WorkspacePolicy); err != nil {
 			return CreateTaskResult{}, s.rollbackPartialTask(ctx, task.ID, fmt.Errorf("attach workspace policy: %w", err))
+		}
+	}
+	if s.mcpSelectionWriter != nil && len(req.MCPServerIDs) > 0 {
+		if err := s.mcpSelectionWriter.Replace(ctx, mcpconfig.SelectionScopeTask, task.WorkspaceID, task.ID, req.MCPServerIDs); err != nil {
+			return CreateTaskResult{}, s.rollbackPartialTask(ctx, task.ID, fmt.Errorf("persist MCP selections: %w", err))
 		}
 	}
 
@@ -644,16 +685,19 @@ func (s *Service) findTaskByExternalIDIfPresent(ctx context.Context, workspaceID
 // means the original error must surface — this also covers a bare task-id
 // primary-key collision, unrelated to external_id, falling through
 // correctly, since no task holds this external_id either way.
-func (s *Service) recoverFoundTaskAfterInsertFailure(ctx context.Context, workspaceID, externalID string) (CreateTaskResult, bool) {
+func (s *Service) recoverFoundTaskAfterInsertFailure(ctx context.Context, workspaceID, externalID string) (CreateTaskResult, bool, error) {
 	if externalID == "" {
-		return CreateTaskResult{}, false
+		return CreateTaskResult{}, false, nil
 	}
 	found, lookupErr := s.tasks.GetTaskByExternalID(ctx, workspaceID, externalID)
+	if errors.Is(lookupErr, taskrepo.ErrTaskNotFound) || found == nil && lookupErr == nil {
+		return CreateTaskResult{}, false, nil
+	}
 	if lookupErr != nil {
-		return CreateTaskResult{}, false
+		return CreateTaskResult{}, false, lookupErr
 	}
 	s.hydrateTaskRelations(ctx, found)
-	return CreateTaskResult{Task: found, Outcome: foundOutcomeFor(found)}, true
+	return CreateTaskResult{Task: found, Outcome: foundOutcomeFor(found)}, true, nil
 }
 
 func deriveProvisionalTaskTitle(description string) (string, error) {
@@ -1055,6 +1099,7 @@ func (s *Service) buildTask(ctx context.Context, req *CreateTaskRequest, workflo
 		IsEphemeral:            req.IsEphemeral,
 		ParentID:               req.ParentID,
 		Autopilot:              req.Autopilot,
+		InitialWorkspaceLayout: req.InitialWorkspaceLayout,
 		AssigneeAgentProfileID: req.AssigneeAgentProfileID,
 		Origin:                 origin,
 		ProjectID:              req.ProjectID,
@@ -1323,7 +1368,7 @@ func (s *Service) claimRepositoryBranchSlot(
 // empty. Best-effort: lookup failures degrade to the next fallback.
 func (s *Service) repoDisplayLabel(ctx context.Context, repoInput TaskRepositoryInput, repositoryID string) string {
 	if remoteURL := effectiveRemoteURL(repoInput); remoteURL != "" {
-		if _, owner, name, _, err := parseRemoteRepositoryURL(remoteURL, repoInput.Provider); err == nil {
+		if _, owner, name, _, err := parseRemoteRepositoryURL(remoteURL, effectiveRemoteProvider(repoInput)); err == nil {
 			return owner + "/" + name
 		}
 	}
@@ -1642,8 +1687,11 @@ func (s *Service) resolveRepoInputLocal(
 func (s *Service) resolveRepoInputRemote(
 	ctx context.Context, workspaceID string, repoInput TaskRepositoryInput, baseBranch string,
 ) (string, string, bool, error) {
+	if err := s.inferEnterpriseGitHubProvider(ctx, workspaceID, &repoInput); err != nil {
+		return "", "", false, err
+	}
 	provider, owner, name, canonicalURL, parseErr := parseRemoteRepositoryURL(
-		effectiveRemoteURL(repoInput), repoInput.Provider,
+		effectiveRemoteURL(repoInput), effectiveRemoteProvider(repoInput),
 	)
 	if parseErr != nil {
 		return "", "", false, parseErr
@@ -1655,8 +1703,11 @@ func (s *Service) resolveRepoInputRemote(
 	if metadataErr != nil {
 		return "", "", false, metadataErr
 	}
+	if err := s.verifyEnterpriseGitHubOrigin(ctx, workspaceID, repoInput); err != nil {
+		return "", "", false, err
+	}
 	defaultBranch := firstNonEmpty(repoInput.DefaultBranch, repoInput.BaseBranch)
-	if defaultBranch == "" && repoInput.ResolveProviderDefaults && s.providerProber != nil && provider == providerGitHub {
+	if defaultBranch == "" && repoInput.ResolveProviderDefaults && s.providerProber != nil && provider == providerGitHub && remoteProviderHost(provider, canonicalURL) == githubProviderHost {
 		defaultBranch = s.probeProviderDefaultBranchIfMissing(ctx, workspaceID, provider, owner, name)
 	}
 	providerHost := remoteProviderHost(provider, canonicalURL)
@@ -1781,7 +1832,7 @@ func parseRemoteRepositoryURL(raw, providerHint string) (provider, owner, name, 
 	originHost := strings.ToLower(parsed.Host)
 	parts := strings.Split(strings.Trim(strings.TrimSuffix(parsed.Path, ".git"), "/"), "/")
 	switch host {
-	case "github.com", "www.github.com":
+	case publicGitHubHostname, legacyGitHubHostname:
 		return parseGitHubRemote(host, parts, sshStyle)
 	case "gitlab.com", "www.gitlab.com":
 		return parseGitLabRemote(parsed.Scheme, strings.TrimPrefix(originHost, "www."), parts, sshStyle)
@@ -1790,6 +1841,9 @@ func parseRemoteRepositoryURL(raw, providerHint string) (provider, owner, name, 
 	case "ssh.dev.azure.com":
 		return parseAzureSSHRemote(parts)
 	default:
+		if strings.EqualFold(providerHint, providerGitHub) {
+			return parseEnterpriseGitHubRemote(parsed, parts, sshStyle)
+		}
 		if strings.EqualFold(providerHint, providerGitLab) &&
 			(parsed.Scheme == protocolHTTP || parsed.Scheme == protocolHTTPS) {
 			return parseGitLabRemote(parsed.Scheme, originHost, parts, false)
@@ -1823,7 +1877,11 @@ func parseGitHubRemote(host string, parts []string, sshStyle bool) (string, stri
 		return "", "", "", "", fmt.Errorf("invalid GitHub repository URL: expected github.com/owner/repo")
 	}
 	owner, name := parts[0], parts[1]
-	canonical := fmt.Sprintf("https://github.com/%s/%s.git", owner, name)
+	webHost := host
+	if webHost == legacyGitHubHostname {
+		webHost = publicGitHubHostname
+	}
+	canonical := fmt.Sprintf("https://%s/%s/%s.git", webHost, owner, name)
 	if sshStyle {
 		canonical = fmt.Sprintf("git@%s:%s/%s.git", host, owner, name)
 	}
@@ -1856,7 +1914,7 @@ func parseGitLabRemote(scheme, host string, parts []string, sshStyle bool) (stri
 
 func remoteProviderHost(provider, remoteURL string) string {
 	if provider == providerGitHub {
-		return githubProviderHost
+		return enterpriseGitHubRemoteOrigin(remoteURL)
 	}
 	if !strings.EqualFold(provider, providerGitLab) {
 		return ""
@@ -2983,6 +3041,18 @@ func (s *Service) deleteTaskWithReasonAndOptions(
 func (s *Service) ValidateTaskDeleteWorktrees(
 	ctx context.Context, taskIDs []string, discardWorktreeChanges bool,
 ) error {
+	return s.ValidateTaskDeleteWorktreesWithOptions(ctx, taskIDs, DeleteTaskOptions{DiscardWorktreeChanges: discardWorktreeChanges})
+}
+
+func (s *Service) ValidateTaskDeleteWorktreesWithOptions(ctx context.Context, taskIDs []string, options DeleteTaskOptions) error {
+	if err := options.validate(); err != nil {
+		return err
+	}
+	if options.AllowUnverifiedWorkspaceChanges {
+		if _, _, err := s.taskDeletePreflightInspector(); err != nil {
+			return err
+		}
+	}
 	if s.worktreeCleanup == nil {
 		return nil
 	}
@@ -3001,13 +3071,16 @@ func (s *Service) ValidateTaskDeleteWorktrees(
 		}
 		worktrees = append(worktrees, inventory...)
 	}
-	return s.validateTaskDeleteWorktreeInventory(ctx, worktrees, discardWorktreeChanges)
+	return s.validateTaskDeleteWorktreeInventoryWithOptions(ctx, worktrees, options)
 }
 
-func (s *Service) validateTaskDeleteWorktreeInventory(
-	ctx context.Context, worktrees []*worktree.Worktree, discardWorktreeChanges bool,
-) error {
-	if len(worktrees) == 0 || s.worktreeCleanup == nil {
+func (s *Service) validateTaskDeleteWorktreeInventoryWithOptions(ctx context.Context, worktrees []*worktree.Worktree, options DeleteTaskOptions) error {
+	if options.AllowUnverifiedWorkspaceChanges {
+		if _, _, err := s.taskDeletePreflightInspector(); err != nil {
+			return err
+		}
+	}
+	if len(worktrees) == 0 {
 		return nil
 	}
 	inspector, ok := s.worktreeCleanup.(WorktreeDirtyInspector)
@@ -3016,9 +3089,12 @@ func (s *Service) validateTaskDeleteWorktreeInventory(
 	}
 	dirty, err := inspector.InspectDirtyWorktrees(ctx, worktrees)
 	if err != nil {
+		if options.AllowUnverifiedWorkspaceChanges && recoverableDeleteInspection(ctx, err) {
+			return nil
+		}
 		return fmt.Errorf("inspect worktrees before delete: %w", err)
 	}
-	if discardWorktreeChanges {
+	if options.DiscardWorktreeChanges {
 		return nil
 	}
 	return newTaskDeleteDirtyWorktreeError(dirty)
@@ -3054,6 +3130,12 @@ func (s *Service) deleteTaskWithManagedClaim(
 	deleteFromDB func(context.Context, string) (bool, error),
 	claim *managed.DeleteClaim,
 ) (bool, error) {
+	ctx, releaseRetention, retentionErr := retention.AcquireMutation(ctx)
+	if retentionErr != nil {
+		return false, retentionErr
+	}
+	defer releaseRetention()
+
 	start := time.Now()
 	archiveDeadline := archivecascade.ArchiveDeadline(ctx)
 	operationCtx, cancelOperation := context.WithDeadline(ctx, archiveDeadline)
@@ -3103,7 +3185,7 @@ func (s *Service) deleteTaskWithManagedClaim(
 	}
 
 	envCleanup := taskEnvironmentCleanup{
-		env: taskEnv, deleteRow: false, discardWorktreeChanges: options.DiscardWorktreeChanges,
+		env: taskEnv, deleteRow: false, allowUnverifiedWorkspaceChanges: options.AllowUnverifiedWorkspaceChanges, discardWorktreeChanges: options.DiscardWorktreeChanges, workspaceCleanup: options.WorkspaceCleanup, retentionInventoryCaptured: options.retainsWorkspace(),
 	}
 	if claim == nil {
 		envCleanup.agentHistory = s.captureQuickChatAgentHistory(operationCtx, task, sessions)
@@ -3155,6 +3237,12 @@ type taskDeletionInventory struct {
 }
 
 func (s *Service) gatherTaskDeletionInventory(ctx context.Context, id string, trigger models.TaskResourceCleanupTrigger, options DeleteTaskOptions) (*taskDeletionInventory, error) {
+	if err := options.validate(); err != nil {
+		return nil, err
+	}
+	if (options.retainsWorkspace() || options.AllowUnverifiedWorkspaceChanges) && s.resourceCleanups == nil {
+		return nil, errors.New("durable workspace retention unavailable")
+	}
 	task, err := s.tasks.GetTask(ctx, id)
 	if err != nil {
 		return nil, err
@@ -3167,8 +3255,8 @@ func (s *Service) gatherTaskDeletionInventory(ctx context.Context, id string, tr
 	if err != nil {
 		return nil, fmt.Errorf("list worktrees for delete: %w", err)
 	}
-	if trigger == models.TaskResourceCleanupTriggerDelete {
-		if err := s.validateTaskDeleteWorktreeInventory(ctx, worktrees, options.DiscardWorktreeChanges); err != nil {
+	if trigger == models.TaskResourceCleanupTriggerDelete && !options.retainsWorkspace() {
+		if err := s.validateTaskDeleteWorktreeInventoryWithOptions(ctx, worktrees, options); err != nil {
 			return nil, err
 		}
 	}
@@ -3222,9 +3310,12 @@ func (s *Service) completeTaskDeletion(ctx context.Context, id string, task *mod
 	s.deleteDependencyEdgesForTask(ctx, id)
 
 	// 5. Publish event (sync, fast) - frontend removes task immediately
-	var extra map[string]interface{}
+	extra := map[string]interface{}{}
+	if sessionIDs := taskSessionIDs(sessions); len(sessionIDs) > 0 {
+		extra["mcp_session_ids"] = sessionIDs
+	}
 	if reason != "" {
-		extra = map[string]interface{}{"reason": reason}
+		extra["reason"] = reason
 	}
 	s.publishTaskEventWithExtra(ctx, events.TaskDeleted, task, nil, extra)
 	s.pullNextTaskOnVacate(ctx, task.WorkflowStepID, task.ID)
@@ -4041,12 +4132,15 @@ func (s *Service) cleanupDestructiveTaskResources(
 			zap.String("env_id", taskEnvironmentID(envCleanup.env)))
 	}
 	if !currentOwnership {
+		if envCleanup.allowUnverifiedWorkspaceChanges {
+			errs = append(errs, errors.New("workspace ownership changed; cleanup deferred"))
+		}
 		return errs
 	}
 	if cause := context.Cause(ctx); cause != nil {
 		return append(errs, cause)
 	}
-	if len(preserveExecutorRows) == 0 && !skipOwnedEnvironment {
+	if len(preserveExecutorRows) == 0 && !skipOwnedEnvironment && !envCleanup.deferEnvironment {
 		environmentCleanup := envCleanup
 		if s.canBatchCleanupTaskWorktrees(envCleanup) {
 			environmentCleanup.env = taskEnvironmentWithoutSnapshotWorktrees(envCleanup.env, worktrees)
@@ -4062,6 +4156,9 @@ func (s *Service) cleanupDestructiveTaskResources(
 	var referenceErrs []error
 	worktrees, referenceErrs = s.filterSharedWorktreesForTaskCleanup(ctx, taskID, sessions, worktrees)
 	errs = append(errs, referenceErrs...)
+	if envCleanup.allowUnverifiedWorkspaceChanges && len(worktrees) != originalWorktreeCount {
+		errs = append(errs, errors.New("workspace remains in use; cleanup deferred"))
+	}
 	if len(worktrees) == 0 {
 		if originalWorktreeCount > 0 {
 			s.logger.Debug("no task worktrees eligible for cleanup",
@@ -4080,11 +4177,7 @@ func (s *Service) cleanupDestructiveTaskResources(
 		if !ok {
 			return append(errs, errors.New("worktree cleaner cannot preserve branches during archive cleanup"))
 		}
-		reclaimable, filterErrs := s.filterDirtyWorktreesForArchive(ctx, taskID, worktrees)
-		errs = append(errs, filterErrs...)
-		if len(reclaimable) > 0 {
-			cleanupErr = cleaner.CleanupWorktreesPreservingBranches(ctx, reclaimable)
-		}
+		cleanupErr = cleaner.CleanupWorktreesPreservingBranches(ctx, worktrees)
 	} else if envCleanup.discardWorktreeChanges {
 		cleaner, ok := s.worktreeCleanup.(WorktreeBatchCleanerWithOptions)
 		if !ok {
@@ -4097,113 +4190,15 @@ func (s *Service) cleanupDestructiveTaskResources(
 		cleanupErr = cleaner.CleanupWorktrees(ctx, worktrees)
 	}
 	if cleanupErr != nil {
-		if envCleanup.preserveBranches && onlyDirtyWorktreeCleanupErrors(cleanupErr) {
-			s.logger.Info("retaining archived worktree after final cleanliness check",
-				zap.String("task_id", taskID), zap.Error(cleanupErr))
-		} else {
-			fields := []zap.Field{
-				zap.String("task_id", taskID),
-				zap.Error(cleanupErr),
-			}
-			var inspErr *worktree.CleanupInspectionError
-			if errors.As(cleanupErr, &inspErr) {
-				fields = append(fields,
-					zap.String("stage", inspErr.Stage),
-					zap.String("reason", inspErr.Reason),
-				)
-			}
-			s.logger.Warn("failed to cleanup task worktrees", fields...)
-			errs = append(errs, fmt.Errorf("cleanup worktrees: %w", cleanupErr))
+		fields := []zap.Field{zap.String("task_id", taskID), zap.Error(cleanupErr)}
+		var inspErr *worktree.CleanupInspectionError
+		if errors.As(cleanupErr, &inspErr) {
+			fields = append(fields, zap.String("stage", inspErr.Stage), zap.String("reason", inspErr.Reason))
 		}
+		s.logger.Warn("failed to cleanup task worktrees", fields...)
+		errs = append(errs, fmt.Errorf("cleanup worktrees: %w", cleanupErr))
 	}
 	return errs
-}
-
-func onlyDirtyWorktreeCleanupErrors(err error) bool {
-	if err == nil {
-		return false
-	}
-	if joined, ok := err.(interface{ Unwrap() []error }); ok {
-		causes := joined.Unwrap()
-		if len(causes) == 0 {
-			return false
-		}
-		for _, cause := range causes {
-			if !onlyDirtyWorktreeCleanupErrors(cause) {
-				return false
-			}
-		}
-		return true
-	}
-	if wrapped, ok := err.(interface{ Unwrap() error }); ok {
-		return onlyDirtyWorktreeCleanupErrors(wrapped.Unwrap())
-	}
-	return errors.Is(err, worktree.ErrDirtyWorktreeCleanup)
-}
-
-// filterDirtyWorktreesForArchive drops worktrees carrying uncommitted or
-// untracked local changes from an archive cleanup batch. Archive preserves
-// the branch and the task_environment_repos row for every worktree it does
-// not physically clean up, so a dropped worktree stays reclaimable by a
-// later cleanup once it is clean, instead of being force-removed now.
-//
-// A dirty-inspection failure preserves the entire batch rather than risking
-// a force-remove of a checkout whose state could not be confirmed clean.
-func (s *Service) filterDirtyWorktreesForArchive(
-	ctx context.Context, taskID string, worktrees []*worktree.Worktree,
-) ([]*worktree.Worktree, []error) {
-	if len(worktrees) == 0 {
-		return worktrees, nil
-	}
-	inspector, ok := s.worktreeCleanup.(WorktreeDirtyInspector)
-	if !ok {
-		// No dirty inspector: pass all worktrees through unchanged (pre-fix
-		// behaviour). The production Manager always satisfies both interfaces;
-		// a WorktreeArchiveBatchCleaner that does not also implement
-		// WorktreeDirtyInspector skips the dirty guard entirely.
-		return worktrees, nil
-	}
-	dirty, err := inspector.InspectDirtyWorktrees(ctx, worktrees)
-	if err != nil {
-		s.logger.Warn("preserving all task worktrees after dirty inspection failed during archive cleanup",
-			zap.String("task_id", taskID),
-			zap.Error(err))
-		return nil, []error{fmt.Errorf("inspect worktrees before archive cleanup: %w", err)}
-	}
-	if len(dirty) == 0 {
-		return worktrees, nil
-	}
-	// Inspection dedupes by (RepositoryPath, Path): when two worktree records
-	// share the identical checkout directory, only the first is reported here.
-	// Matching on path as well as ID catches the un-reported alias so it is
-	// preserved alongside the record inspection actually flagged.
-	dirtyIDs := make(map[string]struct{}, len(dirty))
-	dirtyPaths := make(map[string]struct{}, len(dirty))
-	for _, d := range dirty {
-		dirtyIDs[d.WorktreeID] = struct{}{}
-		if d.Path != "" {
-			dirtyPaths[d.Path] = struct{}{}
-		}
-	}
-	reclaimable := make([]*worktree.Worktree, 0, len(worktrees))
-	for _, wt := range worktrees {
-		if wt == nil {
-			continue
-		}
-		_, dirtyByID := dirtyIDs[wt.ID]
-		dirtyByPath := false
-		if wt.Path != "" {
-			_, dirtyByPath = dirtyPaths[filepath.Clean(wt.Path)]
-		}
-		if dirtyByID || dirtyByPath {
-			s.logger.Info("preserving dirty worktree during archive cleanup",
-				zap.String("task_id", taskID),
-				zap.String("worktree_id", wt.ID))
-			continue
-		}
-		reclaimable = append(reclaimable, wt)
-	}
-	return reclaimable, nil
 }
 
 func (s *Service) canBatchCleanupTaskWorktrees(cleanup taskEnvironmentCleanup) bool {
@@ -4609,6 +4604,10 @@ type workspaceArchiveModeLister interface {
 	ListTasksByWorkspaceWithArchiveMode(ctx context.Context, workspaceID, workflowID, repositoryID, query string, page, pageSize int, sort string, includeArchived, includeEphemeral, onlyEphemeral, excludeConfig, onlyArchived bool) ([]*models.Task, int, error)
 }
 
+type workspaceCommandPanelLister interface {
+	ListTasksByWorkspaceForCommandPanel(ctx context.Context, workspaceID, workflowID, repositoryID, query string, page, pageSize int, sort string, includeArchived, includeEphemeral, onlyEphemeral, excludeConfig, onlyArchived bool) ([]*models.Task, int, error)
+}
+
 func listTasksByWorkspaceWithArchiveMode(repo taskrepo.TaskRepository, ctx context.Context, workspaceID, workflowID, repositoryID, query string, page, pageSize int, sort string, includeArchived, includeEphemeral, onlyEphemeral, excludeConfig, onlyArchived bool) ([]*models.Task, int, error) {
 	if lister, ok := repo.(workspaceArchiveModeLister); ok {
 		return lister.ListTasksByWorkspaceWithArchiveMode(ctx, workspaceID, workflowID, repositoryID, query, page, pageSize, sort, includeArchived, includeEphemeral, onlyEphemeral, excludeConfig, onlyArchived)
@@ -4630,10 +4629,32 @@ func (s *Service) ListTasksByWorkspace(ctx context.Context, workspaceID, workflo
 // used by the sidebar archive view. onlyArchived takes precedence over
 // includeArchived when both are true.
 func (s *Service) ListTasksByWorkspaceWithArchiveMode(ctx context.Context, workspaceID, workflowID, repositoryID, query string, page, pageSize int, sort string, includeArchived, includeEphemeral, onlyEphemeral, excludeConfig, onlyArchived bool) ([]*models.Task, int, error) {
+	return s.listTasksByWorkspace(ctx, workspaceID, workflowID, repositoryID, query, page, pageSize, sort, includeArchived, includeEphemeral, onlyEphemeral, excludeConfig, onlyArchived, false)
+}
+
+func (s *Service) ListTasksByWorkspaceForCommandPanel(ctx context.Context, workspaceID, workflowID, repositoryID, query string, page, pageSize int, sort string, includeArchived, includeEphemeral, onlyEphemeral, excludeConfig, onlyArchived bool) ([]*models.Task, int, error) {
+	if workflowID == "" || query != "" {
+		return nil, 0, fmt.Errorf("command panel listing requires a workflow and empty query")
+	}
+	return s.listTasksByWorkspace(ctx, workspaceID, workflowID, repositoryID, query, page, pageSize, sort, includeArchived, includeEphemeral, onlyEphemeral, excludeConfig, onlyArchived, true)
+}
+
+func (s *Service) listTasksByWorkspace(ctx context.Context, workspaceID, workflowID, repositoryID, query string, page, pageSize int, sort string, includeArchived, includeEphemeral, onlyEphemeral, excludeConfig, onlyArchived, commandPanelVisible bool) ([]*models.Task, int, error) {
 	if err := s.authorizeWorkspaceID(ctx, workspaceID); err != nil {
 		return nil, 0, err
 	}
-	tasks, total, err := listTasksByWorkspaceWithArchiveMode(s.tasks, ctx, workspaceID, workflowID, repositoryID, query, page, pageSize, sort, includeArchived, includeEphemeral, onlyEphemeral, excludeConfig, onlyArchived)
+	var tasks []*models.Task
+	var total int
+	var err error
+	if commandPanelVisible {
+		lister, ok := s.tasks.(workspaceCommandPanelLister)
+		if !ok {
+			return nil, 0, fmt.Errorf("command panel workspace listing is unavailable")
+		}
+		tasks, total, err = lister.ListTasksByWorkspaceForCommandPanel(ctx, workspaceID, workflowID, repositoryID, query, page, pageSize, sort, includeArchived, includeEphemeral, onlyEphemeral, excludeConfig, onlyArchived)
+	} else {
+		tasks, total, err = listTasksByWorkspaceWithArchiveMode(s.tasks, ctx, workspaceID, workflowID, repositoryID, query, page, pageSize, sort, includeArchived, includeEphemeral, onlyEphemeral, excludeConfig, onlyArchived)
+	}
 	if err != nil {
 		return nil, 0, err
 	}

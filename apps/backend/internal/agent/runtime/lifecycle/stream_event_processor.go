@@ -3,6 +3,7 @@ package lifecycle
 import (
 	"context"
 	"fmt"
+	"github.com/kandev/kandev/internal/agentctl/types/streams"
 	"sync"
 	"time"
 
@@ -196,7 +197,7 @@ func (p *streamEventProcessor) batchable(prepared preparedAgentEvent) bool {
 	if _, ok := p.delivery.(canonicalAgentDeliveryBatchProjector); !ok {
 		return false
 	}
-	return prepared.durableEvent != nil && canonicalAgentDeliveryEvent(prepared.event)
+	return prepared.durableEvent != nil && prepared.event.Type != streams.EventTypeShellOutputUpdate && prepared.event.Type != streams.EventTypeToolCall && canonicalAgentDeliveryEvent(prepared.event)
 }
 
 func compatibleCanonicalBatch(previous, next preparedAgentEvent, execution *AgentExecution) bool {
@@ -237,14 +238,14 @@ func (sm *StreamManager) processPreparedAgentEvent(
 		}
 		return nil
 	}
-	event, canonicalProjected, err := sm.projectCanonicalAgentEvent(
+	event, canonicalProjected, notify, err := sm.projectCanonicalAgentEvent(
 		ctx, execution, prepared.event, prepared.durableEvent, delivery, client,
 		!prepared.skipAcknowledgement,
 	)
 	if err != nil {
 		return fmt.Errorf("canonical agent event projection: %w", err)
 	}
-	if !prepared.skipCallback {
+	if notify && !prepared.skipCallback {
 		sm.notifyAgentEvent(execution, event, startupGeneration)
 	}
 	if prepared.durableEvent == nil || canonicalProjected {

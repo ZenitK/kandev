@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 
+	"github.com/kandev/kandev/internal/agent/mcpconfig"
 	settingsmodels "github.com/kandev/kandev/internal/agent/settings/models"
 	"github.com/kandev/kandev/internal/auth/authn"
 	"github.com/kandev/kandev/internal/common/fsdiagnostics"
@@ -45,6 +46,12 @@ type CanvasCleanup interface {
 // for isolated task-service users.
 type WorkspaceSecretDeleter interface {
 	DeleteWorkspaceSecrets(ctx context.Context, workspaceID string) error
+}
+
+// MCPSelectionWriter persists task-scope MCP additions after the task row has
+// been created and validated by the task service.
+type MCPSelectionWriter interface {
+	Replace(context.Context, mcpconfig.SelectionScope, string, string, []string) error
 }
 
 type transactionalWorkspaceCascade interface {
@@ -109,7 +116,9 @@ type WorktreeBatchCleanerWithOptions interface {
 
 // DeleteTaskOptions controls destructive task deletion behavior.
 type DeleteTaskOptions struct {
-	DiscardWorktreeChanges bool
+	AllowUnverifiedWorkspaceChanges bool
+	WorkspaceCleanup                models.WorkspaceCleanupMode
+	DiscardWorktreeChanges          bool
 }
 
 // WorktreeArchiveBatchCleaner removes archived task worktrees without deleting
@@ -441,6 +450,7 @@ type Repos struct {
 	Messages                      repository.MessageRepository
 	Attachments                   repository.AttachmentRepository
 	Turns                         repository.TurnRepository
+	TurnChanges                   repository.TurnChangesRepository
 	Sessions                      repository.SessionRepository
 	GitSnapshots                  repository.GitSnapshotRepository
 	RepoEntities                  repository.RepositoryEntityRepository
@@ -478,6 +488,7 @@ type Service struct {
 	messages                        repository.MessageRepository
 	attachments                     repository.AttachmentRepository
 	turns                           repository.TurnRepository
+	turnChanges                     repository.TurnChangesRepository
 	sessions                        repository.SessionRepository
 	gitSnapshots                    repository.GitSnapshotRepository
 	repoEntities                    repository.RepositoryEntityRepository
@@ -581,6 +592,7 @@ type Service struct {
 	remoteBranchLister             RemoteBranchLister
 	repositorySelectionResolver    RepositorySelectionResolver
 	gitLabRepositoryOriginVerifier GitLabRepositoryOriginVerifier
+	gitHubRepositoryOriginVerifier GitHubRepositoryOriginVerifier
 	repoCloneLocation              RepoCloneLocation
 	blockers                       BlockerRepository
 	comments                       CommentRepository
@@ -591,6 +603,7 @@ type Service struct {
 	comparisonTargetPusher         AgentComparisonTargetPusher
 	backgroundWorkActionDispatcher BackgroundWorkActionDispatcher
 	runtimeOverridesMu             sync.Mutex
+	mcpSelectionWriter             MCPSelectionWriter
 
 	workspaceSourceProviderRefresher WorkspaceSourceProviderRefresher
 
@@ -641,6 +654,9 @@ type Service struct {
 	cleanupWorkerMu                       sync.Mutex
 	archiveReclaimBackfillMu              sync.Mutex
 	archiveReclaimBackfillAfterWorktreeID string
+	archiveReclaimWakeCutoff              time.Time
+	archiveReclaimWakeAfterID             string
+	archiveReclaimWakeDone                bool
 	cleanupWorkerCancel                   context.CancelFunc
 	cleanupWorkerWG                       sync.WaitGroup
 	cleanupWorkerWake                     chan struct{}
@@ -801,6 +817,12 @@ func (s *Service) SetWorkflowTaskArchiveCoordinator(coordinator WorkflowTaskArch
 	s.workflowTaskArchiveCoordinator = coordinator
 }
 
+// SetMCPSelectionWriter wires task-scope MCP persistence. It is optional so
+// focused task-service users can keep the existing task contract.
+func (s *Service) SetMCPSelectionWriter(writer MCPSelectionWriter) {
+	s.mcpSelectionWriter = writer
+}
+
 // NewService creates a new task service
 func NewService(repos Repos, eventBus bus.EventBus, log *logger.Logger, discoveryConfig RepositoryDiscoveryConfig) *Service {
 	svc := &Service{
@@ -812,6 +834,7 @@ func NewService(repos Repos, eventBus bus.EventBus, log *logger.Logger, discover
 		messages:                      repos.Messages,
 		attachments:                   repos.Attachments,
 		turns:                         repos.Turns,
+		turnChanges:                   repos.TurnChanges,
 		sessions:                      repos.Sessions,
 		gitSnapshots:                  repos.GitSnapshots,
 		repoEntities:                  repos.RepoEntities,

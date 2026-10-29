@@ -31,6 +31,96 @@ support, not a starter repository.
 6. Smoke-test every declared hook and capability, then bump the version for
    the next iteration.
 
+## Install and migrate SDK dependencies
+
+The standalone SDK starts at **0.1.0**. This source change does not establish
+public availability: wait for a successful Stable SDK publication and its
+verified host mapping before running the public installation commands below.
+The general and coordinator templates have separate migration handoffs.
+
+The Go and npm packages share an SDK version, independent of Kandev's version.
+Each package includes `sdk-release.json`: `host_release` names the originating
+Stable host, `min_kandev_version` is the SDK-wide host floor, and `api_versions`
+lists supported manifest API versions. A package version is not a manifest
+`api_version`, a handshake version, or a plugin's own version.
+
+After the selected SDK version is publicly verified:
+
+1. Change Go imports from `github.com/kandev/kandev/pkg/pluginsdk` to
+   `github.com/kdlbs/kandev/pluginsdk`. Generated wire imports move from
+   `github.com/kandev/kandev/proto/kandev/plugin/v1` to
+   `github.com/kdlbs/kandev/pluginsdk/proto/kandev/plugin/v1`.
+2. Remove the old backend requirement and its local replacement from `go.mod`.
+   Install the exact SDK release, then regenerate `go.sum`:
+
+   ```bash
+   go get github.com/kdlbs/kandev/pluginsdk@v0.1.0
+   go mod tidy
+   ```
+
+3. Replace frontend `file:`, `link:`, or workspace SDK dependencies with an exact
+   registry version and commit the generated lockfile:
+
+   ```bash
+   npm install --save-dev --save-exact @kdlbs/plugin-sdk@0.1.0
+   ```
+
+4. Set `manifest.yaml`'s `min_kandev_version` to at least the highest floor of
+   the SDKs actually installed. Select an `api_version` supported by all of
+   them. Use a complete Stable host version without prerelease or build suffixes.
+   Inspect the installed npm record with
+   `node -p 'require("@kdlbs/plugin-sdk/sdk-release.json")'`.
+   Do not invent the initial host number from these examples.
+5. Add the compatibility check before build/package in CI, after dependency
+   installation. Run it from the plugin's Go module and manifest directory:
+
+   ```bash
+   go run github.com/kdlbs/kandev/pluginsdk/cmd/kandev-sdk-check@v0.1.0 \
+     --manifest manifest.yaml --frontend-sdk node_modules/@kdlbs/plugin-sdk
+   ```
+
+Omit `--frontend-sdk` for Go-only plugins. Add `--frontend-only` for a project
+that only checks frontend dependencies. The checker reads the Go module version
+selected by Go, which can be higher than the direct requirement. It checks the
+installed frontend package against npm lockfile v2/v3 or pnpm lockfile v9.
+Run frontend checks from that package's project root; use `--manifest` to select
+a manifest elsewhere. For npm workspaces, the same `--frontend-sdk` argument
+finds a hoisted SDK up to the nearest lockfile root and checks its exact lock
+entry. A closer installed package takes precedence. Checkout-directory symlinks
+and normal pnpm store links are supported, including aliases directly to workspace
+members. Lockfiles can be up to 32 MiB;
+package manifests, plugin manifests, and SDK release records can be up to 1 MiB.
+The checker rejects SDK replacements, links to substituted SDK packages, local
+lockfile resolutions, missing metadata, insufficient host minima, and unsupported
+API versions. It does not rewrite project files.
+
+Keep exact pins and upgrade deliberately. Before committing an upgrade, install
+the new versions, rerun the checker and plugin tests, and test on the declared
+minimum host. A plugin that uses only a small part of an SDK still inherits that
+SDK's whole host floor. The local Kandev workspace replacement is for host
+contributors; it is not the external plugin release path.
+
+### Support for existing plugins
+
+Moving source packages does not change the plugin wire protocol or handshake.
+An already built plugin does not need a rebuild just because the import path
+changed. Its existing manifest, API, permissions, and host compatibility still
+apply. The extraction includes a legacy-binary handshake and Host roundtrip test;
+that test is not a certification of every third-party plugin.
+
+Source builds that still import the old path will fail against the new checkout.
+Keep their previously tested Kandev commit pinned until migration is possible.
+There is no forwarding package at the old path. Migrate dependencies and rerun
+tests before publishing a new plugin release; a higher declared host minimum
+can intentionally exclude older hosts.
+
+SDK publication removes the sibling checkout requirement for SDK compilation
+and typechecking. `plugin-pack` remains a backend-owned packaging tool. A
+repository that uses it must retain a separately pinned tooling checkout or
+provide an equivalent validated packaging path. Do not delete all checkout steps
+without inspecting their purpose. See [SDK release and recovery](release-process.md#plugin-sdk-publication)
+for maintainer prerequisites and artifact verification.
+
 ## Lifecycle
 
 ![Plugin authoring lifecycle: package validation and safe extraction feed the supervised Go runtime path and the browser native-UI path, which ends in plugin initialization.](../screenshots/plugin-authoring-lifecycle.svg)
@@ -381,7 +471,7 @@ app does not receive that API. Use the canvas state protocol instead.
 The guide summarizes the contract for discovery. These files remain the source
 of truth and must be updated together when the contract changes:
 
-- Versioned frontend author contract: `@kandev/plugin-sdk`, sourced from
+- Versioned frontend author contract: `@kdlbs/plugin-sdk`, sourced from
   `apps/packages/plugin-sdk`. Import it with `import type`; the package has no
   dependency on Kandev, React, Zustand, or private `@/` modules, so it also
   typechecks when consumed from an isolated or sparse checkout.
@@ -389,8 +479,8 @@ of truth and must be updated together when the contract changes:
   apps/web/lib/plugins/types.ts. These may contain compatibility-only host
   details that are deliberately absent from the public SDK.
 - Concrete frontend Host exports: apps/web/lib/plugins/host-api.ts.
-- Backend author API: apps/backend/pkg/pluginsdk.
-- Wire contract: apps/backend/proto/kandev/plugin/v1/plugin.proto.
+- Backend author API: pluginsdk.
+- Wire contract: pluginsdk/proto/kandev/plugin/v1/plugin.proto.
 - Manifest model and semantic validation: apps/backend/internal/plugins/manifest.
 - Package integrity and installation: apps/backend/internal/plugins/pkgtar.
 - Durable decisions: [ADR 0043](../decisions/0043-plugin-host-data-api.md),
@@ -434,7 +524,7 @@ Type frontend bundles against the versioned, runtime-free SDK rather than
 copying host interfaces or importing Kandev application files:
 
 ```ts
-import type { PluginHostApi, PluginRegistry } from "@kandev/plugin-sdk";
+import type { PluginHostApi, PluginRegistry } from "@kdlbs/plugin-sdk";
 ```
 
 Official code-host plugins use `host.context` for provider-neutral workspace,
@@ -502,7 +592,7 @@ closing future reads.
 ### Managed conversation and task surfaces
 
 Use the shared Host components for an installation-owned conversation. Import
-the prop and controller types from `@kandev/plugin-sdk`; the plugin owns the
+the prop and controller types from `@kdlbs/plugin-sdk`; the plugin owns the
 controller adapter and calls its declared workspace actions.
 
 ```tsx
@@ -564,13 +654,13 @@ before submitting the request.
 | registerTaskPanel               | { id, title, titleKey?, icon?, Component, mobileEnabled?, visible?(context) }; adds a row to the task workspace's "+" (add panel) menu; Component receives { panelId, taskId, sessionId, sessionKind, presentation, conversation: { openMessage(messageId), history } }; `titleKey` is a plugin translation key with literal `title` fallback | Active ui.bundle | Panel renders behind its own error boundary with reactive localized titles; a throwing `visible` hides the item; handles are generation-bound and independently scoped, inert after unmount, identity change, disable, reload, or uninstall; `host.conversation` outside a panel returns stable empty state; desktop preserves layout identity on navigation and mobile uses the full-height Chat surface | registry.registerTaskPanel({ id: "notes", title: "Notes", titleKey: "panels.notes", Component: NotesPanel }) |
 | registerTaskMenuAction          | { id, label, icon?, group: "edit" \| "primary", visible?(context), items?(context), run(context) }; "edit" is card-only inside Edit, while "primary" is a top-level item on cards and desktop/mobile task-row menus; a synchronous `items(context)` returning TaskMenuSubItemRegistration[] ({ id, label, icon?, disabled?, run(context) }) renders the action as a submenu of those children instead | Active ui.bundle                                                       | Action is revoked on disable/uninstall; a throwing/rejecting run is caught and logged; an items() that throws or yields nothing usable falls back to the flat item, and unusable children are dropped                                                                                                                           | registry.registerTaskMenuAction({ id: "enhance", label: "Enhance", group: "primary", run: doEnhance })              |
 | registerTaskFilter              | { id, label, getOptions(), matches(context, selected) }; adds a client-side, multi-select filter section to the kanban board's display dropdown, alongside Workflow/Repository                                                                                                                         | Active ui.bundle                                                       | Filter is revoked on disable/uninstall; selections are ephemeral (not persisted); matches is only called for a non-empty selection, and a throw is caught, logged, and treated as non-matching                  | registry.registerTaskFilter({ id: "tags", label: "Tags", getOptions: listTagOptions, matches: taskHasSelectedTag }) |
-| registerTaskListFacet           | { id, label, getValues({ taskId, workspaceId }), subscribe? }; adds page-local Sort and Group choices on `/tasks`                                                                                                                                                                                      | Active ui.bundle                                                       | Values apply only to the loaded page, callbacks are isolated, and registrations are revoked on disable/unload                                                                                                   | registry.registerTaskListFacet({ id: "tags", label: "Tag", getValues: taskTags })                                   |
+| registerTaskListFacet           | { id, label, getValues({ taskId, workspaceId }), subscribe? }; adds Sort and Group choices on `/tasks` after built-ins                                                                                                                                                                                     | Active ui.bundle                                                       | Values apply only to the loaded page; selections use the host `tasks_list_sort` / `tasks_list_group` preference; callbacks are isolated and registrations are revoked on disable/unload                         | registry.registerTaskListFacet({ id: "tags", label: "Tag", getValues: taskTags })                                   |
 | host.React / host.jsx           | Shared React instance and React.createElement alias                                                                                                                                                                                                                                                    | Active ui.bundle                                                       | No cleanup; never bundle a second React/Radix runtime                                                                                                                                                           | const h = host.jsx                                                                                                  |
 | host.context                    | Versioned provider-neutral reads/subscriptions for active workspace, all workspace ids, native task creation, and exact provider repository identity                                                                                                                                                   | Active ui.bundle                                                       | Subscriptions are generation-owned and revoked on unload; records are stable SDK shapes, not private app state                                                                                                  | const ids = host.context.getWorkspaceIds()                                                                          |
 | host.useSettingsSaveContributor | Registers one plugin-owned contributor for the native save bar; the host prefixes ids with `plugin:<pluginId>:` before shared coordination                                                                                                                                                             | Active ui.bundle                                                       | Contributor lifecycle follows the rendering component; save and discard remain plugin-owned                                                                                                                     | host.useSettingsSaveContributor({ id: "credentials", revision, isDirty, save, discard })                            |
 | host.setIntegrationEnabled      | Publishes one registration's live enabled value for one workspace; the value is reactive but not durable                                                                                                                                                                                               | Active ui.bundle                                                       | The host validates that `integrationId` belongs to this plugin; republish after load using `host.context.getWorkspaceIds()` and `subscribeWorkspaces()`                                                         | host.setIntegrationEnabled("acme", workspaceId, enabled)                                                            |
 | host.i18n                       | Plugin-scoped `locale`, imperative `t(key, options?)`, and reactive `useTranslation()`                                                                                                                                                                                                                 | A registered English catalog                                           | Locale changes re-render reactive consumers; missing active-locale messages fall back to the plugin's English catalog                                                                                           | const { t } = host.i18n.useTranslation(); t("pullRequests")                                                         |
-| host.store (legacy)             | Compatibility-only access to Kandev's private Zustand store; intentionally absent from `@kandev/plugin-sdk`                                                                                                                                                                                            | Older ui.bundle                                                        | Do not use in new or official plugins; private slices may change without plugin-API compatibility                                                                                                               | Migrate reads to host.context                                                                                       |
+| host.store (legacy)             | Compatibility-only access to Kandev's private Zustand store; intentionally absent from `@kdlbs/plugin-sdk`                                                                                                                                                                                            | Older ui.bundle                                                        | Do not use in new or official plugins; private slices may change without plugin-API compatibility                                                                                                               | Migrate reads to host.context                                                                                       |
 | host.api.fetch / baseUrl        | fetch(path, init?) is scoped to /api/plugins/<id>/...; baseUrl is the backend origin for split-origin deployments                                                                                                                                                                                      | Active ui.bundle; backend path must be a declared webhook when relayed | Declare `webhooks[].access: authenticated` for UI-only or billable operations; requests are generation-aborted on unload                                                                                        | host.api.fetch("webhooks/inbound", { method: "POST" })                                                              |
 | host.api.invokeAction           | Authenticated call to a declared action with host-verified workspace/task/session/repository selectors and bounded untrusted body                                                                                                                                                                      | Matching manifest `actions[]` key/scope                                | Browser abort cancels the bounded plugin RPC; safe domain statuses and `Retry-After` may be returned                                                                                                            | host.api.invokeAction("reviews.get", { taskId }, { signal })                                                        |
 | host.storage                    | Authenticated, per-user key/value storage: get(scope, scopeId, key, options?)/set(scope, scopeId, key, value, options?)/delete(scope, scopeId, key, options?)/list(scope, scopeId, options?) plus subscribe(filter, handler); no plugin backend required                                               | capabilities.user_state: true                                          | Reads and writes accept an AbortSignal; set/delete also accept writerId (appended to the host's per-tab id, not a replacement) for echo suppression; list returns every entry under the scope pair, unpaginated | host.storage.set("task", taskId, "note", value, { writerId: panelId, signal })                                      |
@@ -893,7 +983,7 @@ sidebar cluster and `presentation: "mobile"` for the phone navigation sheet.
 Mobile actions must keep their own buttons or links at least 44px in the active
 dimension and provide an accessible name.
 
-`PluginComposerSlotProps` is exported by `@kandev/plugin-sdk` as `{ surface,
+`PluginComposerSlotProps` is exported by `@kdlbs/plugin-sdk` as `{ surface,
 presentation, taskId, taskTitle?, activeSessionId, sessionIds, disabled,
 submittable, disabledReason?, composer, registerTaskCreatedHandler? }`. The
 optional `registerTaskCreatedHandler` is supplied only to create-mode
@@ -961,7 +1051,7 @@ subscription vocabulary and wildcard rules are in the
 | Agent conversations        | AgentConversations(host): Ensure, Dispatch, Delete                                                                               | agent_conversation: true                                                                                                                          | Hidden workflowless ephemeral task/session per plugin, workspace, and conversation key; dispatch occurrence keys are durable and idempotent; uninstall removes every conversation owned by the plugin                                                                                     |
 
 The Go signatures, filters, DTOs, and pagination types live in
-apps/backend/pkg/pluginsdk/host.go and data_types.go. api_write task/message
+pluginsdk/host.go and data_types.go. api_write task/message
 methods are implemented in the current branch; do not repeat older docs that
 call them reserved.
 
@@ -1697,6 +1787,18 @@ bootstrap `nonce`. Kandev then creates a session instance, which agentctl serves
 on a port it assigns, so `ResolveExecutorConnection` must route both the control
 port and any instance port Kandev requests.
 
+For private repositories, choose the workspace's managed task Git credentials
+mode (`task_git_credentials_mode: managed`) to use its connected Git provider.
+Kandev sends the scoped credential lease to the session instance, and agentctl
+uses it during repository materialization. Providers do not need to add Git
+credentials to bootstrap data or reusable runtime images. The remote runtime
+must be able to reach Kandev's Git credential broker.
+
+Fresh workspaces default to executor-owned Git credentials
+(`task_git_credentials_mode: executor`). In that mode, private repositories need
+Git access configured on the remote executor; connecting a Git provider in Kandev
+does not automatically grant the remote clone access.
+
 Return short-lived HTTPS connection leases. Put credentials in HTTP or
 WebSocket headers, never in the URL. Remote environments must reach the
 configured Kandev API URL so agentctl can complete normal session work. Kandev
@@ -1749,7 +1851,7 @@ ui:
 // server/main.go
 package main
 
-import "github.com/kandev/kandev/pkg/pluginsdk"
+import "github.com/kdlbs/kandev/pluginsdk"
 
 func main() { pluginsdk.Serve(&pluginsdk.UnimplementedPlugin{}) }
 ```
@@ -1928,7 +2030,7 @@ event bus for delivery to any subscriber (including other plugins).
 The data-reader accessors return typed, paginated readers, for example
 `host.Tasks().List(ctx, TaskFilter{...}, Page{Limit: 50})` returns
 `([]Task, *PageInfo, error)` with an opaque `PageInfo.NextCursor` for the
-next page. See `pkg/pluginsdk/data_types.go` for the full `Task`,
+next page. See `pluginsdk/data_types.go` for the full `Task`,
 `Workspace`, `Workflow`, `WorkflowStep`, `AgentProfile`, `Repository`,
 `Session`, `Message`, and filter/page types.
 
@@ -2607,7 +2709,7 @@ interface PluginHostApi {
     // plugin reach first-party kandev REST endpoints directly.
     baseUrl: string;
   };
-  ui: PluginUIApi; // named curated host components; see @kandev/plugin-sdk
+  ui: PluginUIApi; // named curated host components; see @kdlbs/plugin-sdk
   i18n: {
     readonly locale: string;
     t(
@@ -2683,7 +2785,7 @@ interface PluginModalHandle {
 ```
 
 A compatibility-only `host.store` remains for older bundles, but it is absent
-from `@kandev/plugin-sdk`. New plugins must not depend on private `AppState`
+from `@kdlbs/plugin-sdk`. New plugins must not depend on private `AppState`
 records or mutate the SPA store.
 
 A plugin bundle must render with `host.React` / `host.jsx`; bundling your
@@ -2961,7 +3063,7 @@ Register a `chat-top-bar` component to surface at-a-glance status in the
 session top bar. Import its context from the public SDK:
 
 ```ts
-import type { ChatTopBarSlotProps } from "@kandev/plugin-sdk";
+import type { ChatTopBarSlotProps } from "@kdlbs/plugin-sdk";
 
 // The exported type contains:
 type Context = {
@@ -2999,7 +3101,7 @@ a `chat-submit-decoration` component instead. The host layers it over the send
 button's own box:
 
 ```ts
-import type { ChatSubmitDecorationSlotProps } from "@kandev/plugin-sdk";
+import type { ChatSubmitDecorationSlotProps } from "@kdlbs/plugin-sdk";
 ```
 
 ```ts
@@ -3594,13 +3696,21 @@ called once at least one option is selected, and a `matches` that throws is
 caught, logged, and treated as non-matching for that task.
 
 Use `registerTaskListFacet` when a plugin owns values that users should sort or group on in the
-`/tasks` list. Values are synchronous and apply only to the currently loaded page. A facet is
-removed automatically when its plugin unloads; optional subscriptions let it refresh the page.
-Return each value at most once for a task. Keep the same label and color for a value across all
-tasks. Facet sorting uses the first value label after a case-insensitive alphabetical comparison.
-Tasks with multiple values appear in every matching group. A task without a value is shown in the
-host's `Ungrouped` section. A child whose parent does not match a group is rendered at that group's
-root.
+`/tasks` list. `getValues({ taskId, workspaceId })` is synchronous. Values apply only to the
+currently loaded page; the host does not store facet values. The host stores the choice as
+`facet:<pluginId>:<facetId>` in its `tasks_list_sort` or `tasks_list_group` preference and
+in the `/tasks` query. While the plugin is unavailable, the controls and list show the
+built-in default without replacing the stored choice; it returns when the plugin registers.
+See the [facet selection persistence decision](../../docs/decisions/2026-09-22-plugin-facet-selection-persistence.md).
+
+Return each value at most once for a task and keep the same label and color for a value across
+all tasks. An entry with an empty label or value counts as no value for that entry. The plugin's facet
+and value labels are displayed verbatim. Facet sorting uses the alphabetically first value
+label, case-insensitively, with tasks without a value last. A task with multiple values appears
+in every matching group; a task without a value appears in the trailing `Unassigned` section.
+A child whose parent does not match a group renders at that group's root. A facet identifier
+is never sent to a task-list query; ordering and grouping by values remain page-local.
+Registrations are removed when their plugin unloads; optional subscriptions refresh the list.
 
 ```js
 registry.registerTaskListFacet({
@@ -3709,7 +3819,7 @@ repackaging.
 - **Leaving stale frontend registrations:** use destroy, unsubscribe store/WS
   listeners, clear timers, and rely on host bulk revocation after disable or
   uninstall.
-- **Importing direct DB/internal packages:** use apps/backend/pkg/pluginsdk and
+- **Importing direct DB/internal packages:** use pluginsdk and
   typed Host methods. Direct database access is outside the plugin contract.
 - **Trusting webhook metadata:** `webhooks[].method` is informational. Public
   routes are not authenticated by Kandev, so validate method, signature, timestamp, replay

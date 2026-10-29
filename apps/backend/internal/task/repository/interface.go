@@ -17,6 +17,10 @@ import (
 var ErrWorkspaceNameMismatch = repoerrors.ErrWorkspaceNameMismatch
 var ErrWorkspaceNotFound = repoerrors.ErrWorkspaceNotFound
 var ErrTaskNotFound = repoerrors.ErrTaskNotFound
+var ErrTurnChangeSetNotFound = repoerrors.ErrTurnChangeSetNotFound
+var ErrTurnChangeSetIdentityConflict = repoerrors.ErrTurnChangeSetIdentityConflict
+var ErrTurnChangeRelationship = repoerrors.ErrTurnChangeRelationship
+var ErrTurnChangeContentNotFound = repoerrors.ErrTurnChangeContentNotFound
 var ErrTaskVersionConflict = repoerrors.ErrTaskVersionConflict
 var ErrTaskManagementClaimConflict = repoerrors.ErrTaskManagementClaimConflict
 var ErrTaskManagementClaimOwned = repoerrors.ErrTaskManagementClaimOwned
@@ -508,6 +512,13 @@ type ConversationMutationWriter interface {
 
 type ConversationTurnStampWriter interface {
 	CreateTurnWithStepStampConversationReceipt(context.Context, *models.Turn) (bool, *models.ConversationMutationReceipt, error)
+}
+
+// TaskCreationAttachmentRepository reads a task's explicit ordered creation
+// attachment set. It is a narrow optional capability so unrelated repository
+// fakes do not need to implement it.
+type TaskCreationAttachmentRepository interface {
+	ListTaskCreationAttachments(ctx context.Context, taskID string) ([]*models.TaskMessageAttachment, error)
 }
 
 // AttachmentRepository stores file-backed prompt attachment descriptors.
